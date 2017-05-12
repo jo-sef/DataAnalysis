@@ -481,6 +481,63 @@ def fit_peaks_lor(XRD_data, XRD_folder=report_folder):
         f.savefig(report_folder + "/XRD_fit_lor_%s%s.png" % (run_no, sub), dpi=300)
         plt.close(f)
 
+
+def fit_xrd_folder(xrd_folder, XRD_data, noise = 15):
+    """
+    
+    :param xrd_folder: folder with XRD data
+    :param XRD_data: list of dictionaries with XRD data
+    :param noise: the limit for whether the peaks can be included or not.
+    :return: returns nothing, but saves the data in a subfolder xrd_folder/XRD_fit/
+    """
+    report_folder = xrd_folder + "/XRD_fit/"
+
+    if not os.path.exists(report_folder):
+        os.makedirs(report_folder)
+
+    for dataset in XRD_data:
+        run_no = dataset["run_no"]
+        sub = dataset["sub"]
+        print(run_no + sub)
+        f, ax = plt.subplots(2, 2)
+        f.suptitle(run_no + sub)
+        ax_l = {"100": ax[0][0], "002": ax[0][1], "101": ax[1][0], "110": ax[1][1]}
+        shifts = {"100": ax[0][0], "002": 0.091, "101": ax[1][0], "110": ax[1][1]}
+
+        with open(report_folder + "XRD_report_%s%s.txt" % (run_no, sub), "w") as rep_fh:
+            with open(report_folder + "XRD_pars_%s%s.txt" % (run_no, sub), "w") as par_fh:
+
+                for hkl in ["100", "101", "002", "110"]:
+                    print(hkl)
+                    try:
+                        out, comps, init, par_list = single_fit_pvoigt(dataset, hkl)
+                    except:
+                        continue
+                    ax = ax_l[hkl]
+                    x, y = extract_peak(dataset, hkl)
+                    ax.plot(x, y)
+                    ax.plot(x, init, 'k--')
+                    ax.set_yscale("log")
+                    ax.plot(x, out.best_fit, 'r-')
+                    ax.plot(x, comps['v1_'], 'b--')
+                    ax.plot(x, comps['v2_'], 'g--')
+                    ax.annotate(hkl, xy=(0.2, 0.8), xycoords='axes fraction', fontsize=16,
+                                horizontalalignment='right', verticalalignment='bottom')
+                    ax.set_yscale("log")
+                    ax.set_ylim(min(y), 1.1 * max(y))
+
+                    if par_list["v1_height"] < noise:
+                        continue
+                    par_fh.write("Peak: %s \n" % hkl)
+                    for key in par_list:
+                        par_fh.write("%s: %s \n" % (key, par_list[key]))
+                    par_fh.write("\n")
+
+                    rep_fh.write("Peak: %s \n" % hkl)
+                    rep_fh.write(out.fit_report())
+                    rep_fh.write("\n")
+        f.savefig(report_folder + "XRD_%s%s.png" % (run_no, sub), dpi=300)
+
 def peakFile(filename):
     peak_df = pd.DataFrame(index=["100", "002", "101", "110"])
 
