@@ -90,6 +90,8 @@ def getFile(filename):
     return dataset
 
 def getFolder(folder):
+    """ create UV_data list from all UV-vis in a folder
+    """
     folder_index = "folderIndex.txt"
     files_in_folder = os.listdir(folder)
     files_to_list = []
