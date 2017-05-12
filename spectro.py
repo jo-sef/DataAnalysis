@@ -119,7 +119,7 @@ def getFolder(folder):
             UV_data.append(getFile(folder+filename))
     return UV_data
 
-def taucplot(dataset, UV_folder="./AZO_2016_UV/"):
+def taucplot(dataset, UV_folder="./AZO_2016_UV/", plot = False):
     """Fit tauc plot according to highest d_tauc/d_hv and a few points above and below. 
 
     """
@@ -134,11 +134,19 @@ def taucplot(dataset, UV_folder="./AZO_2016_UV/"):
     data = data[(data["hv"] > 3) & (data["hv"] < 4.5)]
     x = data["hv"]
     y = data["Tauc"]
-    max_a = max(data["d_Tauc"])
+    max_x = np.inf
+    if run_no == "706" and sub == "C":
+        max_x =4
+    max_a = max(data["d_Tauc"][x<max_x])
     mxi = data[data["d_Tauc"] == max_a].index.values[0]
 
     ################ Setup points to fit #####################################
-    points = data.loc[mxi - 2:mxi+5, ["hv", "Tauc", "d_Tauc"]]
+    xlim = 5
+    xliml = 2
+    if run_no in ["719","720"]:
+        xlim=1
+        xliml=1
+    points = data.loc[mxi - xliml:mxi+xlim, ["hv", "Tauc", "d_Tauc"]]
     px = np.array(points["hv"])
     py = np.array(points["Tauc"])
 
@@ -164,15 +172,18 @@ def taucplot(dataset, UV_folder="./AZO_2016_UV/"):
     ax.plot(x, y, label="data")
     ax.plot(px, init, color="k", ls="--", label="initial guess")
     ax.plot(x, a * x + b, color="r", label="best fit", lw=0.5)
-    ax.legend()
+    ax.legend(loc = "lower right")
 
     ax.annotate("Bandgap: \n %1.3f eV" % bandgap, xy=(0.4, 0.4), xycoords='axes fraction', fontsize=16,
                 horizontalalignment='right', verticalalignment='bottom')
 
-    ax.set_ylim(0, data.loc[mxi, "Tauc"] * 2.5)
-    ax.set_xlim(3.2, data.loc[mxi,"hv"]+1)
+    ax.set_ylim(0, max(data.loc[:, "Tauc"]))
+    ax.set_xlim(3.2, 4.5)
     ax.set_ylabel(r"($\alpha$h$\nu$)$^2$", fontsize=16)
     ax.set_xlabel("(eV)", fontsize=16)
     f.suptitle("Tauc plot %s %s" % (run_no, sub), fontsize=16)
     f.savefig(report_folder + "Tauc_%s%s.png" % (run_no, sub), dpi=300,bbox_fit = "tight")
-    plt.close()
+    if plot == False:
+        plt.close()
+    else:
+       plt.show()
