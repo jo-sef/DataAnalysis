@@ -187,3 +187,11 @@ def taucplot(dataset, UV_folder="./AZO_2016_UV/", plot = False):
         plt.close()
     else:
        plt.show()
+
+def to_list(samples_data, uv_data):
+    for dataset in samples_data:
+        for u_sample in uv_data:
+            if samples_data["run_no"] == u_sample["run_no"] and samples_data["sub"] == u_sample["sub"]:
+                dataset.update(
+                    {"t_bandgap": u_sample["t_bandgap"],
+                     "thickness": u_sample["thickness"]})
