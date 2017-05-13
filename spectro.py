@@ -189,6 +189,11 @@ def taucplot(dataset, UV_folder="./AZO_2016_UV/", plot = False):
        plt.show()
 
 def taucfile(t_file):
+    """
+    :param t_file: contains the fit report produced by the taucplot function
+    :return: a dictionary with run_no, substrate and calculated bandgap 
+    (provided the run_no and substrate is part of the filename)
+    """
     run_no,sub = re.findall("(\d\d\d)([aAmMcCrR])", t_file)[0]
     with open(t_file) as fin:
         content = fin.read()
@@ -201,6 +206,10 @@ def taucfile(t_file):
     return {"t_bandgap": bandgap, "run_no": run_no, "sub": sub}
 
 def taucfolder(t_folder):
+    """
+    :param t_folder: folder with fit reports (.txt) files
+    :return: a dictionary with calculated bandgap from all of them
+    """
     if not t_folder.endswith("/"):
         t_folder = t_folder+"/"
     uv_data = []
