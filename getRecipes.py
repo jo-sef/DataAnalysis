@@ -190,3 +190,30 @@ def add_flows(a_list,runs):
                        "TEGa":float(TEGa_flow),
                        "MO_carrier": float(MO_carrier),
                        "Gas_carrier": float(Gas_carrier)})
+
+def make_samples_data(start_run=688, end_run=722):
+    """
+    :param start_run: lower limit of run_no's included
+    :param end_run: upper limit of run_no's included
+    :return: list of dictionaries that can serve as samples_data
+    """
+    samples_data = []
+
+    first_sample = start_run
+    last_sample = end_run
+    samples_with_AM_substrates = [717,718]
+
+    if len(samples_data) == 0:
+        samples_data = []
+        for sub in ["R", "C"]:
+            for x in range(first_sample, last_sample+1, 1):
+                samples_data.append({"run_no": str(x),
+                                     "sub": sub})
+        for sub in ["A", "M"]:
+            for x in samples_with_AM_substrates:
+                samples_data.append({"run_no": str(x),
+                                     "sub": sub})
+
+    samples_data = sorted(samples_data, key=lambda k: k["run_no"])
+
+    return samples_data
