@@ -481,7 +481,6 @@ def fit_peaks_lor(XRD_data, XRD_folder=report_folder):
         f.savefig(report_folder + "/XRD_fit_lor_%s%s.png" % (run_no, sub), dpi=300)
         plt.close(f)
 
-
 def fit_xrd_folder(xrd_folder, XRD_data, noise = 15):
     """
     
@@ -622,8 +621,6 @@ def folder_to_peakdata(folder,par_or_report="pars"):
             print(filename)
 
     return sample_dicts
-
-
 
 def remove_small_peaks(peak_df, limit):
     """Remove peaks that are smaller than the limit"""
