@@ -188,6 +188,31 @@ def taucplot(dataset, UV_folder="./AZO_2016_UV/", plot = False):
     else:
        plt.show()
 
+def taucfile(t_file):
+    run_no,sub = re.findall("(\d\d\d)([aAmMcCrR])", t_file)[0]
+    with open(t_file) as fin:
+        content = fin.read()
+        try:
+            slope = re.findall("slope:\s*(\d+.\d+)", content)[0]
+            intercept = re.findall("intercept:\s+(\S\d+\.\d+)", content)[0]
+            bandgap = -float(intercept)/float(slope)
+        except:
+            print("slope and intercept not found in file: "+t_file)
+    return {"t_bandgap": bandgap, "run_no": run_no, "sub": sub}
+
+def taucfolder(t_folder):
+    if not t_folder.endswith("/"):
+        t_folder = t_folder+"/"
+    uv_data = []
+    files_in_folder = [ file for file in os.listdir(t_folder) if re.search("UV_fit_\d\d\d[mMaArRCc].txt", file)]
+    for filename in files_in_folder:
+        run_no, sub = re.findall("(\d\d\d)([aAmMcCrR])", filename)[0]
+        results = taucfile(t_folder+filename)
+        if len(uv_data)>0 and run_no+sub in [s["run_no"]+s["sub"] for s in uv_data]:
+            continue
+        uv_data.append(results)
+    return uv_data
+
 def to_list(samples_data, uv_data):
     for dataset in samples_data:
         for u_sample in uv_data:
