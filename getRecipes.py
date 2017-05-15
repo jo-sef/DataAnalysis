@@ -211,6 +211,10 @@ def add_flows(a_list,runs):
 
     for sample in a_list:
         run_no = sample["run_no"]
+
+        if run_no is None:
+            continue
+
         TMAl_flow = runs.loc[run_no, "TMAl flow"]
         tBuOH_flow = runs.loc[run_no, "tBuOH flow"]
         MO_carrier = runs.loc[run_no, "MO_carrier"]
