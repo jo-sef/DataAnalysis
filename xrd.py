@@ -331,6 +331,48 @@ def single_fit_pvoigt(dataset, hkl, plot_figure=False):
 
     return out, comps, init, par_list
 
+def get_rockfolder(folder):
+    files_in_folder = os.listdir(folder)
+    files_to_list = []
+    folder_index = "folderIndex.txt"
+    for filename in files_in_folder:
+        if re.search(".txt", filename) and filename != folder_index:
+            files_to_list.append(filename)
+
+    list_keys = sorted(files_to_list)
+    rock_data = []
+    for line in list_keys:
+
+        filename = line.strip()
+        if len(filename) < 1:
+            continue
+        try:
+            sample, sub = re.findall("(\d\d\d)([rRCcaAmM])", filename)[0]
+
+        except:
+            sample, sub = re.findall("(\d\d\d)[-_]\S*([rRCcaAmM])-", filename)[0]
+
+        d_range = re.findall("(\d\d)-(\d\d).txt", filename)[0]
+
+        sub = sub.upper()
+        data = pd.DataFrame()
+
+        with open(folder + "/" + filename, "r") as fhandle:
+
+            cor = [x for x in re.findall('\s+([0-9]\S*\.?\S*),?\s+([0-9]\S*),?', fhandle.read())]
+
+        data["Angle"] = [float(a[0].strip(",")) for a in cor]
+        data["PSD"] = [float(a[1].strip(",")) for a in cor]
+
+        new_sample = {'filename': filename,
+                      'run_no': sample,
+                      "sub": sub,
+                      "data": data,
+                      "range": d_range}
+
+        rock_data.append(new_sample)
+        return rock_data
+
 def fit_rocking(dataset, shift, plot_figure=False):
     """ 
     fit using a single model, return out,comps,init, and list of parameters
@@ -391,7 +433,7 @@ def fit_rocking(dataset, shift, plot_figure=False):
 
     return out, comps, init, par_list
 
-def fit_rocking_folder(rocking_folder, rock_data, plot=False):
+def fit_rocking_folder(rocking_folder, rock_data, ):
     """
 
     :param rocking_folder: folder with rocking data
@@ -408,6 +450,7 @@ def fit_rocking_folder(rocking_folder, rock_data, plot=False):
         max_shift = {"100": 0.0798, "002": 0.091, "101": 0.1158, "110": 0.175}
         run_no = dataset["run_no"]
         sub = dataset["sub"]
+        d_range = dataset["range"]
         print(run_no + sub)
         f, ax = plt.subplots(1, 1)
         f.suptitle(run_no + sub)
@@ -416,31 +459,28 @@ def fit_rocking_folder(rocking_folder, rock_data, plot=False):
         if sub == "C":
             max_shift = max_shift["002"]
         else:
-            continue
+            max_shift = 0.15
 
-        with open(report_folder + "rock_report_%s%s.txt" % (run_no, sub), "w") as rep_fh:
-            with open(report_folder + "rock_pars_%s%s.txt" % (run_no, sub), "w") as par_fh:
-                out, comps, init, par_list = fit_rocking(dataset, shift=max_shift)
+        with open(report_folder + "rock_report_%s%s_%s-%s.txt" % (run_no, sub,d_range[0],d_range[1]), "w") as rep_fh:
 
-                x = get_x(dataset)
-                y = get_y(dataset)
+            out, comps, init, par_list = fit_rocking(dataset, shift=max_shift)
 
-                ax.plot(x, y)
-                ax.plot(x, init, 'k--')
-                ax.set_yscale("linear")
-                ax.plot(x, out.best_fit, 'r-')
-                ax.plot(x, comps['v1_'], 'b--')
-                ax.plot(x, comps['v2_'], 'g--')
-                ax.set_yscale("linear")
-                ax.set_ylim(min(y), 1.1 * max(y))
+            x = get_x(dataset)
+            y = get_y(dataset)
 
-                for key in par_list:
-                    par_fh.write("%s: %s \n" % (key, par_list[key]))
+            ax.plot(x, y)
+            ax.plot(x, init, 'k--')
+            ax.set_yscale("linear")
+            ax.plot(x, out.best_fit, 'r-')
+            ax.plot(x, comps['v1_'], 'b--')
+            ax.plot(x, comps['v2_'], 'g--')
+            ax.set_yscale("linear")
+            ax.set_ylim(min(y), 1.1 * max(y))
 
-                rep_fh.write(out.fit_report())
-                rep_fh.write("\n")
+            rep_fh.write(out.fit_report())
+            rep_fh.write("\n")
 
-        f.savefig(report_folder + "rock_%s%s.png" % (run_no, sub), dpi=300)
+        f.savefig(report_folder + "rock_%s%s_%s-%s.png" %(run_no, sub,d_range[0],d_range[1]), dpi=300)
         plt.close("all")
 
 def rockFile(filename):
@@ -469,40 +509,40 @@ def rockFile(filename):
             heights = re.findall("v1_height:\s+(\d+\.\d+)", content)
             ### height is taken from max(comp["v1_"])
 
-        for i in range(len(angles)):
-            rocks_dic = {}
-            angle,gamma, sigma, amplitude = None, None, None, None
-            shift = None
-            fwhm_g,fwhm_l,fwhm_v = None,None,None
+        i = 0
+        rocks_dic = {}
+        angle,gamma, sigma, amplitude = None, None, None, None
+        shift = None
+        fwhm_g,fwhm_l,fwhm_v = None,None,None
 
-            if sigmas_in_file:
-                sigma = float(sigmas[i])
-                fwhm_g = 2 * sigma
-                rocks_dic.update({"sigma":sigma,
-                                  "fwhm_g":fwhm_g})
-            if gammas_in_file:
-                gamma = float(gammas[i])
-                fwhm_l = 2 * gamma
-                rocks_dic.update({"gamma": gamma,
-                                  "fwhm_l": fwhm_l})
+        if sigmas_in_file:
+            sigma = float(sigmas[i])
+            fwhm_g = 2 * sigma
+            rocks_dic.update({"sigma":sigma,
+                              "fwhm_g":fwhm_g})
+        if gammas_in_file:
+            gamma = float(gammas[i])
+            fwhm_l = 2 * gamma
+            rocks_dic.update({"gamma": gamma,
+                              "fwhm_l": fwhm_l})
 
-            if shift_in_file:
-                shift = float(shifts[i])
-                rocks_dic.update({"shift": shift})
+        if shift_in_file:
+            shift = float(shifts[i])
+            rocks_dic.update({"shift": shift})
 
-            if heights_in_file:
-                height = heights[i]
-                rocks_dic.update({"height": height})
+        if heights_in_file:
+            height = heights[i]
+            rocks_dic.update({"height": height})
 
-            if sigmas_in_file and gammas_in_file:
-                fwhm_v = 0.5346*fwhm_l+math.sqrt(0.2166*fwhm_l**2+fwhm_g**2)
-                rocks_dic.update({"fwhm": fwhm_v})
-            if sigmas_in_file and not gammas_in_file:
-                rocks_dic.update({"fwhm": fwhm_g})
+        if sigmas_in_file and gammas_in_file:
+            fwhm_v = 0.5346*fwhm_l+math.sqrt(0.2166*fwhm_l**2+fwhm_g**2)
+            rocks_dic.update({"fwhm": fwhm_v})
+        if sigmas_in_file and not gammas_in_file:
+            rocks_dic.update({"fwhm": fwhm_g})
 
     return rocks_dic
 
-def rockFolder(folder,par_or_report="pars"):
+def rockFolder(folder,par_or_report="report"):
     """ Collect all fitted data in folder into one dictionary {"run_no":, "sub":, "data":} """
 
     files_in_folder = os.listdir(folder)
@@ -513,9 +553,14 @@ def rockFolder(folder,par_or_report="pars"):
 
     sample_dicts = []
     for filename in files_to_list:
-
+        print(filename)
         sample, sub = re.findall("(\d\d\d)([MmAaCcRr])", filename)[0]
-        sample_dicts.append({"run_no": sample, "sub": sub, "rock": rockFile(folder+filename)})
+        d_range = re.findall("(\d\d)-(\d\d).txt",filename)[0]
+        sam = {"run_no": sample, "sub": sub, "range":d_range}
+        rock = rockFile(folder+filename)
+        for key in rock:
+            sam.update({key:rock[key]})
+        sample_dicts.append(sam)
 
     return sample_dicts
 
