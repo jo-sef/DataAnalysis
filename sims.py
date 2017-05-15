@@ -94,7 +94,7 @@ def calculate(sims_data):
 def to_list(samples_data, sims_data):
         for dataset in samples_data:
             for sim in sims_data:
-                if samples_data["run_no"] == sim["run_no"] and samples_data["sub"] == sim["sub"]:
+                if dataset["run_no"] == sim["run_no"] and dataset["sub"] == sim["sub"]:
                     dataset.update(
                         {"Al_content": sim["Al_content"],
                          "Al_error": sim["Al_error"],

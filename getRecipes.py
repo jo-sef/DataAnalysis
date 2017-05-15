@@ -1,6 +1,23 @@
 import re
 #runs_location = "M:\\PhD Main Folder\\09MOVPE\\"
 
+### Partial pressure constants
+
+gas_con = pd.DataFrame(columns = ["DEZn","tBuOH", "TMAl", "TEGa"],index = ["A","B","C","MP"])
+gas_con["DEZn"] = [2190, 8.28, 0, -28]
+gas_con["tBuOH"] = [1080.55, 7.15711, -103,24]
+gas_con["TMAl"] = [2780, 10.48, 0, 15]
+gas_con["TEGa"] = [2162,8.083,0,-82]
+###################################################################
+###################################################################
+
+###Calculate partial pressures and moles/min
+
+def p_press(MO, bub_temp):
+    press = 10.0**(gas_con.loc["B",MO]-gas_con.loc["A",MO]/(273.15+float(bub_temp)+gas_con.loc["C",MO]))
+    return float(press)
+
+#####################################################################
 
 runs_location = "./"
 
@@ -187,7 +204,7 @@ def add_flows(a_list,runs):
                        'tBuOH_flow': float(tBuOH_flow),
                        "MO_carrier": float(MO_carrier),
                        "DEZn_flow":float(DEZn_flow),
-                       "TEGa":float(TEGa_flow),
+                       "TEGa_flow":float(TEGa_flow),
                        "MO_carrier": float(MO_carrier),
                        "Gas_carrier": float(Gas_carrier)})
 
@@ -217,3 +234,4 @@ def make_samples_data(start_run=688, end_run=722):
     samples_data = sorted(samples_data, key=lambda k: k["run_no"])
 
     return samples_data
+

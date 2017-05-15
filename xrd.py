@@ -544,6 +544,7 @@ def peakFile(filename):
         return alpha1 / (2 * math.sin(theta * math.pi / 360))
 
     with open(filename) as fin:
+        print(re.findall("\d\d\d[aAmMrRcC]",filename))
         content = fin.read()
         peaks = re.findall("Peak:\s*(\d+)", content)
         angles = re.findall("v1_center:\s+(\d+\.\d+)", content)
@@ -552,17 +553,21 @@ def peakFile(filename):
         gammas = re.findall("v1_gamma:\s+(\-?\d+\.\d+)", content)
         shifts = re.findall("shift:\s+(\d+\.\d+)", content)
         heights = re.findall("v1_height:\s+(\d+\.\d+)", content)
-        peak_ints = re.findall("Max peak intensity: (\d+\.\d+)", content)
+        ### height is taken from max(comp["v1_"])
 
         for i, hkl in enumerate(peaks):
-
+            angle,gamma, sigma, amplitude = None, None, None, None
+            shift = None
+            fwhm_g,fwhm_l,fwhm_v = None,None,None
             angle = float(angles[i])
             amplitude = float(amplitudes[i])
+
 
             try:
                 sigma = float(sigmas[i])
                 fwhm_g = 2 * sigma * math.sqrt(2 * math.log(2))
-            except: print("no sigma "+hkl)
+            except:
+                print("no sigma "+hkl)
 
             try:
                 gamma = float(gammas[i])
@@ -577,11 +582,6 @@ def peakFile(filename):
             except: print("no shift "+hkl)
 
             try:
-                peak_intensity = float(peak_ints[i])
-                peak_df.loc[hkl, "mag"] = peak_intensity
-            except: print("no peak intensity "+hkl)
-
-            try:
                 height = heights[i]
                 peak_df.loc[hkl, "peak_int"] = height
             except:
@@ -592,14 +592,14 @@ def peakFile(filename):
                 peak_df.loc[hkl, "fwhm"] = fwhm_v
             except:
                 fwhm_v  = 2 * sigma
-                peak_df.loc[hkl, "fhwm"] = fwhm_v
+                peak_df.loc[hkl, "fwhm"] = fwhm_v
 
             d = calc_d(angle)
 
-            peak_df.loc[hkl,"Peak"] = angle
-            peak_df.loc[hkl,"d"] = d
-            peak_df.loc[hkl,"Amplitude"] = amplitude
-            peak_df.loc[hkl,"sigma"] = sigma
+            peak_df.loc[hkl, "Peak"] = angle
+            peak_df.loc[hkl, "d"] = d
+            peak_df.loc[hkl, "Amplitude"] = amplitude
+            peak_df.loc[hkl, "sigma"] = sigma
     return peak_df
 
 def folder_to_peakdata(folder,par_or_report="pars"):
@@ -614,11 +614,8 @@ def folder_to_peakdata(folder,par_or_report="pars"):
     sample_dicts = []
     for filename in files_to_list:
 
-        try:
-            sample, sub = re.findall("(\d\d\d)([MmAaCcRr])", filename)[0]
-            sample_dicts.append({"run_no": sample, "sub": sub, "peaks": peakFile(folder+filename)})
-        except:
-            print(filename)
+        sample, sub = re.findall("(\d\d\d)([MmAaCcRr])", filename)[0]
+        sample_dicts.append({"run_no": sample, "sub": sub, "peaks": peakFile(folder+filename)})
 
     return sample_dicts
 
@@ -683,6 +680,30 @@ def peaks_to_list(peak_data,samples_data):
     """
     for p_dat in peak_data:
         for sam_dat in samples_data:
-            if p_dat["run_no"]==sam_dat["run_no"] and p_dat["sub"]==sam_dat["sub"]:
+            if p_dat["run_no"] == sam_dat["run_no"] and p_dat["sub"] == sam_dat["sub"]:
                 for key in p_dat:
-                    sam_dat.update({key:p_dat[key]})
+                    if key == "peaks":
+                        if "peak_int" not in p_dat["peaks"].keys():
+                            print(p_dat["run_no"]+p_dat["sub"]," no peak_int")
+                            continue
+                        mag100 = p_dat["peaks"].loc["100","peak_int"]
+                        mag101 = p_dat["peaks"].loc["101", "peak_int"]
+                        mag002 = p_dat["peaks"].loc["002", "peak_int"]
+                        mag110 = p_dat["peaks"].loc["110", "peak_int"]
+
+                        fwhm100 = p_dat["peaks"].loc["100", "fwhm"]
+                        fwhm101 = p_dat["peaks"].loc["101", "fwhm"]
+                        fwhm002 = p_dat["peaks"].loc["002", "fwhm"]
+                        fwhm110 = p_dat["peaks"].loc["110", "fwhm"]
+
+                        sam_dat.update({"mag100":mag100,
+                                        "mag101": mag101,
+                                        "mag002": mag002,
+                                        "mag110": mag110})
+
+                        sam_dat.update({"fwhm100": fwhm100,
+                                        "fwhm101": fwhm101,
+                                        "fwhm002": fwhm002,
+                                        "fwhm110": fwhm110})
+                        continue
+                    sam_dat.update({key: p_dat[key]})

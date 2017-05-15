@@ -102,7 +102,7 @@ def getFolder(folder,thickness_file="AZO_hall_thicknesses_20170314.txt"):
                           "thickness": thickness})
     else:
         print(sample + sub, resistivity, mobility, carrier_density, thickness)
-        hall_data.append({"sample": sample,
+        hall_data.append({"run_no": sample,
                           "sub": sub,
                           "hall_p": resistivity,
                           "hall_mob": mobility,
@@ -113,10 +113,10 @@ def getFolder(folder,thickness_file="AZO_hall_thicknesses_20170314.txt"):
 def to_list(samples_data, hall_data):
     for dataset in samples_data:
         for h_sample in hall_data:
-            if samples_data["run_no"] == h_sample["run_no"] and samples_data["sub"] == h_sample["sub"]:
+            if dataset["run_no"] == h_sample["run_no"] and dataset["sub"] == h_sample["sub"]:
                 dataset.update({"hall_n": h_sample["hall_n"],
                                 "hall_p": h_sample["hall_p"],
                                 "hall_mob": h_sample["hall_mob"],
-                           "hall_thick": h_sample["thickness"]})
+                                "hall_thick": h_sample["thickness"]})
 
-                print("ok", dataset["sample"], dataset["sub"])
+                print("ok", dataset["run_no"], dataset["sub"])
