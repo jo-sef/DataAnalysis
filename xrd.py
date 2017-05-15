@@ -361,8 +361,8 @@ def get_rockfolder(folder):
 
             cor = [x for x in re.findall('\s+([0-9]\S*\.?\S*),?\s+([0-9]\S*),?', fhandle.read())]
 
-        data["Angle"] = [float(a[0].strip(",")) for a in cor]
-        data["PSD"] = [float(a[1].strip(",")) for a in cor]
+            data["Angle"] = [float(a[0].strip(",")) for a in cor]
+            data["PSD"] = [float(a[1].strip(",")) for a in cor]
 
         new_sample = {'filename': filename,
                       'run_no': sample,
@@ -371,7 +371,7 @@ def get_rockfolder(folder):
                       "range": d_range}
 
         rock_data.append(new_sample)
-        return rock_data
+    return rock_data
 
 def fit_rocking(dataset, shift, plot_figure=False):
     """ 
