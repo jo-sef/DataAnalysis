@@ -515,6 +515,10 @@ def rockFile(filename):
         shift = None
         fwhm_g,fwhm_l,fwhm_v = None,None,None
 
+        if angles_in_file:
+            angle = float(angles[i])
+            rocks_dic.update({"peak":angle})
+
         if sigmas_in_file:
             sigma = float(sigmas[i])
             fwhm_g = 2 * sigma
@@ -542,27 +546,44 @@ def rockFile(filename):
 
     return rocks_dic
 
-def rockFolder(folder,par_or_report="report"):
+def rockFolder(folder, par_or_report="report"):
     """ Collect all fitted data in folder into one dictionary {"run_no":, "sub":, "data":} """
 
     files_in_folder = os.listdir(folder)
     files_to_list = []
     for filename in files_in_folder:
-        if re.search("%s\S+.txt" %par_or_report, filename):
+        if re.search("%s\S+.txt" % par_or_report, filename):
             files_to_list.append(filename)
 
     sample_dicts = []
     for filename in files_to_list:
         print(filename)
         sample, sub = re.findall("(\d\d\d)([MmAaCcRr])", filename)[0]
-        d_range = re.findall("(\d\d)-(\d\d).txt",filename)[0]
-        sam = {"run_no": sample, "sub": sub, "range":d_range}
+        d_range = re.findall("(\d\d)-(\d\d).txt", filename)[0]
+        sam = {"run_no": sample, "sub": sub, "range": d_range}
         rock = rockFile(folder+filename)
         for key in rock:
-            sam.update({key:rock[key]})
+            sam.update({key: rock[key]})
         sample_dicts.append(sam)
 
     return sample_dicts
+
+def rock_to_list(samples_data,rock_list):
+    """
+    
+    :param samples_data: 
+    :param rock_list: = rockFolder()
+    :return: returns nothing, but adds fwhm of rocking curve to samples_data
+    """
+    for r_dat in rock_list:
+        for sam_dat in samples_data:
+            if r_dat["run_no"] == sam_dat["run_no"] and r_dat["sub"] == sam_dat["sub"]:
+                d_range = r_dat["range"]
+                if d_range[0] in ["12","13"]:
+                    key = "rocking13"
+                if d_range[0] in ["23"]:
+                    key = "rocking23"
+                sam_dat.update({key:r_dat["fwhm"]})
 
 def fit_peaks_lor(XRD_data, XRD_folder=report_folder):
     """ Make fits for the expected peaks in the XRD spectra. Stores the results in image files and 
@@ -907,7 +928,7 @@ def add_lattice_params(peak_data):
     for sam in peak_data:
         lattice_params(sam)
 
-def peaks_to_list(peak_data,samples_data):
+def peaks_to_list(samples_data,peak_data):
     """ Append all keys of peak_data to the corresponding sample in samples_data
     Ensure peak_data = peakFolder(directory_of_fits)
     Control that there are no duplicate keys
