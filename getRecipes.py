@@ -1,32 +1,35 @@
 import re
 #runs_location = "M:\\PhD Main Folder\\09MOVPE\\"
-
-### Partial pressure constants
-
-gas_con = pd.DataFrame(columns = ["DEZn","tBuOH", "TMAl", "TEGa"],index = ["A","B","C","MP"])
-gas_con["DEZn"] = [2190, 8.28, 0, -28]
-gas_con["tBuOH"] = [1080.55, 7.15711, -103,24]
-gas_con["TMAl"] = [2780, 10.48, 0, 15]
-gas_con["TEGa"] = [2162,8.083,0,-82]
-###################################################################
-###################################################################
-
-###Calculate partial pressures and moles/min
-
-def p_press(MO, bub_temp):
-    press = 10.0**(gas_con.loc["B",MO]-gas_con.loc["A",MO]/(273.15+float(bub_temp)+gas_con.loc["C",MO]))
-    return float(press)
-
-#####################################################################
-
 runs_location = "./"
 
 import zipfile
 import xml.etree.cElementTree
 import pandas as pd
+import numpy as np
 
+
+def p_press(MO, bub_temp):
+    """
+    
+    :param MO: DEZn, TEGa, tBuOH, or TMAl
+    :param bub_temp: temperature of bubbler
+    :return: partial pressure in mmHg (Torr)
+    """
+    gas_con = pd.DataFrame(columns=["DEZn", "tBuOH", "TMAl", "TEGa"], index=["A", "B", "C", "MP"])
+    gas_con["DEZn"] = [2109, 8.28, 0, -28]
+    gas_con["tBuOH"] = [1080.55, 7.15711, -103, 24]
+    gas_con["TMAl"] = [2134, 8.224, 0, 15]
+    gas_con["TEGa"] = [2162, 8.083, 0, -82]
+
+    press = 10.0**(gas_con.loc["B",MO]-gas_con.loc["A",MO]/(273.15+float(bub_temp)+gas_con.loc["C",MO]))
+    return float(press)
 
 def runDoc(runs_location="./"):
+    """
+    
+    :param runs_location: 
+    :return: raw dataframe of runs.docx
+    """
     if runs_location[-1]!="/":
         runs_location = runs_location+"/"
 
@@ -84,51 +87,65 @@ def runDoc(runs_location="./"):
     return runs_df
 
 def get_flow(runs_df,precursor, sample):
+    """
+    
+    :param runs_df: runs = runDoc()
+    :param precursor: DEZn, TMAl, tBuOH, TEGa, MO_carrier, Gas_carrier
+    :param sample: run_no of recipe
+    :return: flow of given precursor as float
+    """
 
-        if precursor == "tBuOH":
-            value = runs_df.loc[sample, "tBuOH flow"]
-            try:
-                f = float(value.split("/")[0].strip())
-                return f
-            except:
-                return 0
-        if precursor == "MO_carrier":
-            value = runs_df.loc[sample, "MO carrier"]
-            try:
-                return float(runs_df.loc[sample, "MO carrier"].replace(",", "."))
-            except:
-                print(sample+"no MO carrier")
-
-        if precursor == "Gas_carrier":
-            gas = runs_df.loc[sample, "Gas carrier"]
-            try:
-                return float(gas)
-            except:
-                print(gas)
-
-        if precursor == "TMAl":
-            for cols in runs_df.loc[sample]:
-                if re.search("TMAl", str(cols)):
-                    f = re.findall("TMAl\s?\d+\.[0-9].*/(\d+\.?\d?)\s?sccm", cols)
-                    if len(f) > 0:
-                        return float(f[0])
-        if precursor == "TEGa":
-            for cols in runs_df.loc[sample]:
-                if re.search("TEGa", str(cols)):
-                    f = re.findall("TEGa\s?\d+\.[0-9].*/(\d+\.?\d?)\s?sccm", cols)
-                    if len(f) > 0:
-                        return float(f[0])
-        if precursor == "DEZn":
-            try:
-                d = float(runs_df.loc[sample, "DEZn flow"].split("/")[0].strip().replace(",", "."))
-                return d
-            except:
-                return 0
-        else:
-            # print(sample+" precursor not found "+precursor)
+    if precursor == "tBuOH":
+        value = runs_df.loc[sample, "tBuOH flow"]
+        try:
+            f = float(value.split("/")[0].strip())
+            return f
+        except:
             return 0
+    if precursor == "MO_carrier":
+        value = runs_df.loc[sample, "MO carrier"]
+        try:
+            return float(runs_df.loc[sample, "MO carrier"].replace(",", "."))
+        except:
+            print(sample+"no MO carrier")
+
+    if precursor == "Gas_carrier":
+        gas = runs_df.loc[sample, "Gas carrier"]
+        try:
+            return float(gas)
+        except:
+            print(gas)
+
+    if precursor == "TMAl":
+        for cols in runs_df.loc[sample]:
+            if re.search("TMAl", str(cols)):
+                f = re.findall("TMAl\s?\d+\.[0-9].*/(\d+\.?\d?)\s?sccm", cols)
+                if len(f) > 0:
+                    return float(f[0])
+    if precursor == "TEGa":
+        for cols in runs_df.loc[sample]:
+            if re.search("TEGa", str(cols)):
+                f = re.findall("TEGa\s?\d+\.[0-9].*/(\d+\.?\d?)\s?sccm", cols)
+                if len(f) > 0:
+                    return float(f[0])
+    if precursor == "DEZn":
+        try:
+            d = float(runs_df.loc[sample, "DEZn flow"].split("/")[0].strip().replace(",", "."))
+            return d
+        except:
+            return 0
+    else:
+        # print(sample+" precursor not found "+precursor)
+        return 0
 
 def get_temp(runs,precursor, sample):
+    """
+    
+    :param runs: 
+    :param precursor: 
+    :param sample: 
+    :return: temperature of bubbler in C
+    """
     if precursor == "tBuOH":
         try:
             return float(runs["tBuOH bath"][sample].split("/")[0].strip().replace(",", "."))
@@ -191,6 +208,7 @@ def add_flows(a_list,runs):
     """ Add flows from runs. runs is obtained by importing getRecipes : 
     runs = getRecipes.get_runs(runs_location)
     """
+
     for sample in a_list:
         run_no = sample["run_no"]
         TMAl_flow = runs.loc[run_no, "TMAl flow"]
@@ -199,6 +217,43 @@ def add_flows(a_list,runs):
         DEZn_flow = runs.loc[run_no, "DEZn flow"]
         TEGa_flow = runs.loc[run_no, "TEGa flow"]
         Gas_carrier = runs.loc[run_no, "Gas_carrier"]
+
+        p_DEZn = p_press("DEZn", runs.loc[run_no,"DEZn temp"])
+        p_TMAl = p_press("TMAl", runs.loc[run_no,"TMAl temp"])
+        p_tBuOH = p_press("tBuOH", runs.loc[run_no, "tBuOH temp"])
+        p_TEGa = p_press("TEGa", runs.loc[run_no, "TEGa temp"])
+
+
+        if float(TMAl_flow) != 0 or float(TEGa_flow) != 0:
+            MO_total = 2000 + MO_carrier * 1000
+        else:
+            MO_total = 1000 + MO_carrier * 1000
+
+        Gas_total = Gas_carrier * 1000 + 1000
+
+        DEZn_molar_flow = DEZn_flow / 22400 * p_DEZn / (900 - p_DEZn)
+        TMAl_molar_flow = TMAl_flow/ 22400 * p_TMAl / (900 - p_TMAl)
+        TEGa_molar_flow = TEGa_flow/ 22400 * p_TEGa / (900 - p_TEGa)
+        O_molar_flow = tBuOH_flow / 22400 * p_tBuOH / (900 - p_tBuOH)
+
+        if DEZn_flow != 0 and O_molar_flow != 0:
+            vi_ii = O_molar_flow /DEZn_molar_flow * MO_total / Gas_total
+        else:
+            vi_ii = np.nan
+
+        if TMAl_flow != 0 or TEGa_flow !=0:
+            vi_mo = O_molar_flow/(DEZn_molar_flow+TEGa_molar_flow+TMAl_molar_flow) * MO_total / Gas_total
+
+
+
+
+        sample.update({"DEZn molar": DEZn_molar_flow,
+                       "TEGa molar": TEGa_molar_flow,
+                       "TMAl molar": TMAl_molar_flow,
+                       "tBuOH molar": O_molar_flow,
+                       "vi_ii": vi_ii,
+                        "vi_mo":vi_mo})
+
 
         sample.update({'TMAl_flow': float(TMAl_flow),
                        'tBuOH_flow': float(tBuOH_flow),
