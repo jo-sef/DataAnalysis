@@ -277,7 +277,7 @@ def fit_peaks(XRD_data, XRD_folder = report_folder):
 
 def single_fit_pvoigt(dataset, hkl, plot_figure=False):
     """ 
-    fit using a single model, return out,copms,init, and list of parameters
+    fit using a single model, return out,comps,init, and list of parameters
     """
 
     max_shift = {"100": 0.0798, "002": 0.091, "101": 0.1158, "110": 0.175}
@@ -330,6 +330,194 @@ def single_fit_pvoigt(dataset, hkl, plot_figure=False):
         print(max(comps['v1_']))
 
     return out, comps, init, par_list
+
+def fit_rocking(dataset, shift, plot_figure=False):
+    """ 
+    fit using a single model, return out,comps,init, and list of parameters
+    """
+    from lmfit.models import PseudoVoigtModel
+    import numpy as np
+    model = PseudoVoigtModel
+
+    max_shift = {"100": 0.0798, "002": 0.091, "101": 0.1158, "110": 0.175}
+    sub = dataset["sub"]
+    max_shift = shift
+
+    ############# GET COORDINATES #################
+    x = get_x(dataset=dataset)
+    y = get_y(dataset=dataset)
+
+    mod1 = model(prefix='v1_')
+    mod2 = model(prefix='v2_')
+
+    pars = mod1.guess(y, x=x)
+    pars.update(mod2.guess(y, x=x))
+    # pars['v1_center'].set( min=34.4, max=35)
+    pars['v1_sigma'].set(min=0)
+    pars['v1_amplitude'].set(value=max(y), min=0, vary=True, expr="")
+    pars['v1_fraction'].set(min=0, max=1)
+
+    pars.add('shift', value=max_shift, min=max_shift - 0.01, max=max_shift + 0.01, vary=True)
+
+    pars['v2_center'].set(expr="v1_center+shift")
+    pars['v2_sigma'].set(expr="v1_sigma")
+    pars['v2_amplitude'].set(min=0, expr="v1_amplitude/2")
+    pars['v2_fraction'].set(min=0, expr='v1_fraction')
+
+    mod = mod1 + mod2
+
+    init = mod.eval(pars, x=x)
+    out = mod.fit(y, pars, x=x)
+    comps = out.eval_components(x=x)
+    peak_height = max(comps['v1_'])
+    par_list = out.best_values
+    par_list.update({"v1_height": peak_height, "v2_height": max(comps['v2_'])})
+
+    if plot_figure:
+        plt.plot(x, y)
+        plt.plot(x, init, 'k--')
+
+        out = mod.fit(y, pars, x=x)
+
+        comps = out.eval_components(x=x)
+
+        print(out.fit_report())
+        plt.yscale("linear")
+        plt.plot(x, out.best_fit, 'r-')
+        plt.plot(x, comps['v1_'], 'b--')
+        plt.plot(x, comps['v2_'], 'g--')
+        plt.show()
+        print(max(comps['v1_']))
+
+    return out, comps, init, par_list
+
+def fit_rocking_folder(rocking_folder, rock_data, plot=False):
+    """
+
+    :param rocking_folder: folder with rocking data
+    :param rock_data: list of dictionaries with rocking curve data
+    :return: returns nothing, but saves the data in a subfolder xrd_folder/XRD_fit/
+    """
+    import numpy as np
+    report_folder = rocking_folder + "/rocking_fit/"
+    max_shift = {"100": 0.0798, "002": 0.091, "101": 0.1158, "110": 0.175}
+    if not os.path.exists(report_folder):
+        os.makedirs(report_folder)
+
+    for dataset in rock_data:
+        max_shift = {"100": 0.0798, "002": 0.091, "101": 0.1158, "110": 0.175}
+        run_no = dataset["run_no"]
+        sub = dataset["sub"]
+        print(run_no + sub)
+        f, ax = plt.subplots(1, 1)
+        f.suptitle(run_no + sub)
+        if sub == "R":
+            max_shift = max_shift["110"]
+        if sub == "C":
+            max_shift = max_shift["002"]
+        else:
+            continue
+
+        with open(report_folder + "rock_report_%s%s.txt" % (run_no, sub), "w") as rep_fh:
+            with open(report_folder + "rock_pars_%s%s.txt" % (run_no, sub), "w") as par_fh:
+                out, comps, init, par_list = fit_rocking(dataset, shift=max_shift)
+
+                x = get_x(dataset)
+                y = get_y(dataset)
+
+                ax.plot(x, y)
+                ax.plot(x, init, 'k--')
+                ax.set_yscale("linear")
+                ax.plot(x, out.best_fit, 'r-')
+                ax.plot(x, comps['v1_'], 'b--')
+                ax.plot(x, comps['v2_'], 'g--')
+                ax.set_yscale("linear")
+                ax.set_ylim(min(y), 1.1 * max(y))
+
+                for key in par_list:
+                    par_fh.write("%s: %s \n" % (key, par_list[key]))
+
+                rep_fh.write(out.fit_report())
+                rep_fh.write("\n")
+
+        f.savefig(report_folder + "rock_%s%s.png" % (run_no, sub), dpi=300)
+        plt.close("all")
+
+def rockFile(filename):
+
+    with open(filename) as fin:
+
+        print(re.findall("\d\d\d[aAmMrRcC]",filename))
+        content = fin.read()
+        angles_in_file = re.search("v1_center:\s+(\d+\.\d+)", content)
+        if angles_in_file:
+            angles = re.findall("v1_center:\s+(\d+\.\d+)", content)
+        amps_in_file = re.search("v1_amplitude:\s+(\-?\d+\.\d+)", content)
+        if amps_in_file:
+            amplitudes = re.findall("v1_amplitude:\s+(\-?\d+\.\d+)", content)
+        sigmas_in_file = re.search("v1_sigma:\s+(\-?\d+\.\d+)", content)
+        if sigmas_in_file:
+            sigmas = re.findall("v1_sigma:\s+(\-?\d+\.\d+)", content)
+        gammas_in_file = re.search("v1_gamma:\s+(\-?\d+\.\d+)", content)
+        if gammas_in_file:
+            gammas = re.findall("v1_gamma:\s+(\-?\d+\.\d+)", content)
+        shift_in_file = re.search("shift:\s+(\d+\.\d+)", content)
+        if shift_in_file:
+            shifts = re.findall("shift:\s+(\d+\.\d+)", content)
+        heights_in_file = re.search("v1_height:\s+(\d+\.\d+)", content)
+        if heights_in_file:
+            heights = re.findall("v1_height:\s+(\d+\.\d+)", content)
+            ### height is taken from max(comp["v1_"])
+
+        for i in range(len(angles)):
+            rocks_dic = {}
+            angle,gamma, sigma, amplitude = None, None, None, None
+            shift = None
+            fwhm_g,fwhm_l,fwhm_v = None,None,None
+
+            if sigmas_in_file:
+                sigma = float(sigmas[i])
+                fwhm_g = 2 * sigma
+                rocks_dic.update({"sigma":sigma,
+                                  "fwhm_g":fwhm_g})
+            if gammas_in_file:
+                gamma = float(gammas[i])
+                fwhm_l = 2 * gamma
+                rocks_dic.update({"gamma": gamma,
+                                  "fwhm_l": fwhm_l})
+
+            if shift_in_file:
+                shift = float(shifts[i])
+                rocks_dic.update({"shift": shift})
+
+            if heights_in_file:
+                height = heights[i]
+                rocks_dic.update({"height": height})
+
+            if sigmas_in_file and gammas_in_file:
+                fwhm_v = 0.5346*fwhm_l+math.sqrt(0.2166*fwhm_l**2+fwhm_g**2)
+                rocks_dic.update({"fwhm": fwhm_v})
+            if sigmas_in_file and not gammas_in_file:
+                rocks_dic.update({"fwhm": fwhm_g})
+
+    return rocks_dic
+
+def rockFolder(folder,par_or_report="pars"):
+    """ Collect all fitted data in folder into one dictionary {"run_no":, "sub":, "data":} """
+
+    files_in_folder = os.listdir(folder)
+    files_to_list = []
+    for filename in files_in_folder:
+        if re.search("%s\S+.txt" %par_or_report, filename):
+            files_to_list.append(filename)
+
+    sample_dicts = []
+    for filename in files_to_list:
+
+        sample, sub = re.findall("(\d\d\d)([MmAaCcRr])", filename)[0]
+        sample_dicts.append({"run_no": sample, "sub": sub, "rock": rockFile(folder+filename)})
+
+    return sample_dicts
 
 def fit_peaks_lor(XRD_data, XRD_folder=report_folder):
     """ Make fits for the expected peaks in the XRD spectra. Stores the results in image files and 
@@ -536,6 +724,7 @@ def fit_xrd_folder(xrd_folder, XRD_data, noise = 15):
                     rep_fh.write(out.fit_report())
                     rep_fh.write("\n")
         f.savefig(report_folder + "XRD_%s%s.png" % (run_no, sub), dpi=300)
+        plt.close()
 
 def peakFile(filename):
     peak_df = pd.DataFrame(index=["100", "002", "101", "110"])
@@ -565,7 +754,7 @@ def peakFile(filename):
 
             try:
                 sigma = float(sigmas[i])
-                fwhm_g = 2 * sigma * math.sqrt(2 * math.log(2))
+                fwhm_g = 2 * sigma
             except:
                 print("no sigma "+hkl)
 
