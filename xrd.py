@@ -492,6 +492,11 @@ def rockFile(filename):
         angles_in_file = re.search("v1_center:\s+(\d+\.\d+)", content)
         if angles_in_file:
             angles = re.findall("v1_center:\s+(\d+\.\d+)", content)
+
+        fractions_in_file = re.search("v1_fraction:\s+(\d+\.\d+)", content)
+        if fractions_in_file:
+            fractions = re.findall("v1_fraction:\s+(\d+\.\d+)", content)
+
         amps_in_file = re.search("v1_amplitude:\s+(\-?\d+\.\d+)", content)
         if amps_in_file:
             amplitudes = re.findall("v1_amplitude:\s+(\-?\d+\.\d+)", content)
@@ -517,13 +522,17 @@ def rockFile(filename):
 
         if angles_in_file:
             angle = float(angles[i])
-            rocks_dic.update({"peak":angle})
+            rocks_dic.update({"peak": angle})
+
+        if fractions_in_file:
+            fraction = float(fractions[i])
+            rocks_dic.update({"fraction": fraction})
 
         if sigmas_in_file:
             sigma = float(sigmas[i])
             fwhm_g = 2 * sigma
-            rocks_dic.update({"sigma":sigma,
-                              "fwhm_g":fwhm_g})
+            rocks_dic.update({"sigma": sigma,
+                              "fwhm_g": fwhm_g})
         if gammas_in_file:
             gamma = float(gammas[i])
             fwhm_l = 2 * gamma

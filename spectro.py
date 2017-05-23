@@ -85,7 +85,7 @@ def getFile(filename):
             sub = None
         if re.search("[Ss][Uu][bB]", filename):
             run_no = None
-            sub = re.findall("([RrCcAaMm])-",filename)
+            sub = re.findall("([RrCcAaMm])-",filename)[0]
     dataset = {"run_no":run_no,"sub":sub, "data":data}
     return dataset
 
