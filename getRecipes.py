@@ -205,7 +205,7 @@ def get_runs(run_location):
     return new_runs_df
 
 def add_flows(a_list,runs):
-    """ Add flows from runs. runs is obtained by importing getRecipes : 
+    """ Add flows from runs to a_list. runs is obtained by importing getRecipes : 
     runs = getRecipes.get_runs(runs_location)
     """
 
