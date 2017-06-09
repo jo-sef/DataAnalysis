@@ -24,7 +24,8 @@ def getFile(filename):
                         fill_value=np.NaN)(x)
         new_data = {"Depth": x, "Al Counts": al_y, "Zn Counts": zn_y}
         out_data = pd.DataFrame(new_data, columns=["Depth", "Al Counts", "Zn Counts"])
-        out_data.loc[:, "diff"] = out_data["Al Counts"].diff()
+        out_data.loc[:, "Al diff"] = out_data["Al Counts"].diff()
+
 
         return out_data
 
@@ -77,7 +78,8 @@ def calculate(sims_data):
 
         x = data.dropna().loc[:, "Depth"]
         y = data.dropna().loc[:, "Al Counts"]
-        dydx = data.dropna().loc[:, "diff"]
+        z = data.dropna().loc[:, "Zn Counts"]
+        dydx = data.dropna().loc[:, "Al diff"]
 
         mxi = y[dydx == min(dydx[x > 25])].index.tolist()[0]
         thick = x[dydx == min(dydx[x > 25])].tolist()[0]
@@ -86,10 +88,16 @@ def calculate(sims_data):
         lower_sampler_index = int(mxi / 2 - sampler_window / 2)
         upper_sampler_index = int(mxi / 2 + sampler_window / 2)
 
-        al_cont = data.loc[lower_sampler_index:upper_sampler_index, "Al Counts"].mean()
-        error = data.loc[lower_sampler_index:upper_sampler_index, "Al Counts"].std()
+        al_content = data.loc[lower_sampler_index:upper_sampler_index, "Al Counts"].mean()
+        zn_content = data.loc[lower_sampler_index:upper_sampler_index, "Zn Counts"].mean()
+        al_error = data.loc[lower_sampler_index:upper_sampler_index, "Al Counts"].std()
+        zn_error = data.loc[lower_sampler_index:upper_sampler_index, "Zn Counts"].std()
 
-        dataset.update({"Al_content": float(al_cont), "Al_error": float(error), "thick": float(thick)})
+        dataset.update({"Al_content": float(al_content),
+                        "Al_error": float(al_error),
+                        "Zn_content": float(zn_content),
+                        "Zn_error": float(zn_error),
+                        "thick": float(thick)})
 
 def to_list(samples_data, sims_data):
         for dataset in samples_data:
@@ -98,4 +106,6 @@ def to_list(samples_data, sims_data):
                     dataset.update(
                         {"Al_content": sim["Al_content"],
                          "Al_error": sim["Al_error"],
+                         "Zn_content": sim["Zn_content"],
+                         "Zn_error": sim["Zn_error"],
                          "SIMS_T": sim["thick"]})
