@@ -810,7 +810,7 @@ def peakFile(filename):
     with open(filename) as fin:
         print(re.findall("\d\d\d[aAmMrRcC]",filename))
         content = fin.read()
-        peaks = re.findall("Peak:\s*(\d+)", content)
+        peaks = re.findall("Peak:\s*(\d+)\s*\n\s*v2_", content)
         angles = re.findall("v1_center:\s+(\d+\.\d+)", content)
         amplitudes = re.findall("v1_amplitude:\s+(\-?\d+\.\d+)", content)
         sigmas = re.findall("v1_sigma:\s+(\-?\d+\.\d+)", content)
