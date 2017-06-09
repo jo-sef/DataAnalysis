@@ -879,7 +879,9 @@ def folder_to_peakdata(folder,par_or_report="pars"):
     for filename in files_to_list:
 
         sample, sub = re.findall("(\d\d\d)([MmAaCcRr])", filename)[0]
-        sample_dicts.append({"run_no": sample, "sub": sub, "peaks": peakFile(folder+filename)})
+        sample_dicts.append({"run_no": sample,
+                             "sub": sub,
+                             "peaks": peakFile(folder+filename)})
 
     return sample_dicts
 
