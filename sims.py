@@ -151,6 +151,8 @@ def getFolder(folder):
 
     with open(folder + sample_index, "r") as fh:
         for lines in fh:
+            if lines.startswith("#"):
+                continue
             index_filename, sample = lines.split()
 
             for dataset in sims_data:
