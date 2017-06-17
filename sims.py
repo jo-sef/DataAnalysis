@@ -124,6 +124,7 @@ def getFile(filename):
 
         return out_data
 
+
 def getFolder(folder):
     """ create SIMS_data list from all SIMS data in a folder
         return SIMS_data a dictionary with filename, run_no, sub, and data as a df
@@ -131,41 +132,26 @@ def getFolder(folder):
     if not folder.endswith("/"):
         folder = folder + "/"
 
-    folder_index = "folderIndex.txt"
     sample_index = "SIMS_sample_index.txt"
-    files_in_folder = os.listdir(folder)
-    files_to_list = []
-
-    for filename in files_in_folder:
-        if re.search(".dp_rpc_asc", filename) and filename != folder_index:
-            files_to_list.append(filename)
-
-    list_keys = sorted(files_to_list)
 
     sims_data = []
-    for filename in list_keys:
+    with open(folder + sample_index, "r") as f:
+        for lines in f:
+            if not lines.startswith("#"):
+                search = re.findall("(\S*.dp_rpc_asc)\t(\d+)([aAMmRrCc])", lines)
+                if len(search) != 0:
+                    filename, run_no, sub = search[0]
+                    run_no = int(run_no)
 
-        if filename not in [dic["filename"] for dic in sims_data]:
-            file_data = getFile(folder+filename)
-            sims_data.append({"filename":filename, "data":file_data})
+                if len(search) < 1 and re.search("Al_uf", lines):
+                    run_no = 0
+                    sub = None
+                    filename = lines.split()[0]
+            file_data = getFile(folder + filename)
 
-    with open(folder + sample_index, "r") as fh:
-        for lines in fh:
-            if lines.startswith("#"):
-                continue
-            index_filename, sample = lines.split()
+            sims_data.append({"filename": filename, "data": file_data, "run_no": run_no, "sub": sub})
 
-            for dataset in sims_data:
-                if dataset["filename"] == index_filename.strip():
-                    if sample == "Al_uf":
-                            sample = sample
-                            sub = None
-
-                    else:
-                        sub = sample[3]
-                        sample = sample[0:3]
-                    dataset.update({"run_no": sample, "sub": sub})
-    sims_data = sorted(sims_data, key= lambda k: k["run_no"])
+    sims_data = sorted(sims_data, key=lambda k: k["run_no"])
 
     return sims_data
 
