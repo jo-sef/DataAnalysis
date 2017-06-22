@@ -1,16 +1,20 @@
+#### This is a copy of sims.py
+#### The goal is to make a version based on classes, to better keep track of what is being done.
+
 import numpy as np
 from scipy.interpolate import interp1d
 import pandas as pd
 import os
 import re
 
+
 def getFile(filename):
     """
-    Load data into a pandas dataframe
+    Load data from file into a pandas dataframe
     :param filename: name of sims output file (text format)
-    :return: a dataframe of depth,Al Counts, Zn Counts, and diff (diff is the difference along Al Counts)
+    :return: a dataframe of depth,Al Counts, Zn Counts
     """
-
+    print(filename)
     with open(filename, "r") as fh:
         data = pd.read_table(fh, names=["Al_depth", "Al_count", "Zn_depth", "Zn_count"], skiprows=15, delimiter="\t*",
                              skipfooter=140, engine="python")
@@ -24,108 +28,68 @@ def getFile(filename):
                         fill_value=np.NaN)(x)
         new_data = {"Depth": x, "Al Counts": al_y, "Zn Counts": zn_y}
         out_data = pd.DataFrame(new_data, columns=["Depth", "Al Counts", "Zn Counts"])
-        out_data.loc[:, "diff"] = out_data["Al Counts"].diff()
-
-        return out_data
-
-def getFolder(folder):
-    """ create SIMS_data list from all SIMS data in a folder
-        return SIMS_data a dictionary with filename, run_no, sub, and data as a df
-    """
-    if not folder.endswith("/"):
-        folder = folder + "/"
-
-    folder_index = "folderIndex.txt"
-    sample_index = "SIMS_sample_index.txt"
-    files_in_folder = os.listdir(folder)
-    files_to_list = []
-
-    for filename in files_in_folder:
-        if re.search(".dp_rpc_asc", filename) and filename != folder_index:
-            files_to_list.append(filename)
-
-    list_keys = sorted(files_to_list)
-
-    sims_data = []
-    for filename in list_keys:
-
-        if filename not in [dic["filename"] for dic in sims_data]:
-            file_data = getFile(folder+filename)
-            sims_data.append({"filename":filename, "data":file_data})
-
-    with open(folder + sample_index, "r") as fh:
-        for lines in fh:
-            index_filename, sample = lines.split()
-
-            for dataset in sims_data:
-                if dataset["filename"] == index_filename.strip():
-                    if sample == "Al_uf":
-                            sample = sample
-                            sub = None
-
-                    else:
-                        sub = sample[3]
-                        sample = sample[0:3]
-                    dataset.update({"run_no": sample, "sub": sub})
-    sims_data = sorted(sims_data, key= lambda k: k["run_no"])
-
-    return sims_data
-
-def calculate(sims_data):
-    for dataset in sims_data:
-        data = dataset["data"]
-
-        x = data.dropna().loc[:, "Depth"]
-        y = data.dropna().loc[:, "Al Counts"]
-        dydx = data.dropna().loc[:, "diff"]
-
-        mxi = y[dydx == min(dydx[x > 25])].index.tolist()[0]
-        thick = x[dydx == min(dydx[x > 25])].tolist()[0]
-        sampler_window = mxi * 0.95
-
-        lower_sampler_index = int(mxi / 2 - sampler_window / 2)
-        upper_sampler_index = int(mxi / 2 + sampler_window / 2)
-
-        al_cont = data.loc[lower_sampler_index:upper_sampler_index, "Al Counts"].mean()
-        error = data.loc[lower_sampler_index:upper_sampler_index, "Al Counts"].std()
-
-        dataset.update({"Al_content": float(al_cont), "Al_error": float(error), "thick": float(thick)})
-
-def to_list(samples_data, sims_data):
-        for dataset in samples_data:
-            for sim in sims_data:
-                if dataset["run_no"] == sim["run_no"] and dataset["sub"] == sim["sub"]:
-                    dataset.update(
-                        {"Al_content": sim["Al_content"],
-                         "Al_error": sim["Al_error"],
-                         "SIMS_T": sim["thick"]})
-
-def getFile(filename):
-    """
-    Load data into a pandas dataframe
-    :param filename: name of sims output file (text format)
-    :return: a dataframe of depth,Al Counts, Zn Counts, and diff (diff is the difference along Al Counts)
-    """
-
-    with open(filename, "r") as fh:
-        data = pd.read_table(fh, names=["Al_depth", "Al_count", "Zn_depth", "Zn_count"], skiprows=15, delimiter="\t*",
-                             skipfooter=140, engine="python")
-
-        x = np.linspace(int(min(data.Al_depth)), int(max(data.Zn_depth)),
-                        2 * len(data.Al_depth))
-
-        al_y = interp1d(data.Al_depth, data.Al_count, bounds_error=False,
-                        fill_value=np.NaN)(x)
-        zn_y = interp1d(data.Zn_depth, data.Zn_count, bounds_error=False,
-                        fill_value=np.NaN)(x)
-        new_data = {"Depth": x, "Al Counts": al_y, "Zn Counts": zn_y}
-        out_data = pd.DataFrame(new_data, columns=["Depth", "Al Counts", "Zn Counts"])
-        out_data.loc[:, "diff"] = out_data["Al Counts"].diff()
 
         return out_data
 
 
-def getFolder(folder):
+def t_index(data):
+    """
+    Find the depth from the Zn counts. Depth is where the rate of change in the negative direction is minimum. 
+    Above 25 nm because of surface effects
+    """
+
+    col = "Zn Counts"
+    x = data.dropna().loc[:, "Depth"]
+    y = data.dropna().loc[:, col]
+
+    dydx = y.diff().dropna()[x > 25]
+
+    mxi = y.idxmin()
+
+    return mxi
+
+class sims_class:
+    """
+    
+    """
+
+    normalized = False
+    # Al = "not normalized yet"
+    # Al_df = "not normalized yet"
+    filename = None
+    data = None
+    mxi = None
+
+    window = None
+    thickness = None
+    raw = None
+
+    def __init__(self, filename):
+        ## Raw data ##
+        self.filename = filename
+        self.data = getFile(self.filename)
+
+        ## thickness and selected portion (75%)
+        self.mxi = t_index(self.data)
+        window_size = 0.75 * self.mxi
+        self.window = (int(self.mxi / 2 - window_size / 2), int(self.mxi / 2 + window_size / 2))
+        self.thickness = self.data.iloc[self.mxi]["Depth"]
+
+        ##average Counts
+        self.raw = self.data.iloc[self.window[0]:self.window[1]].mean()
+
+        ## Correcting for Zn variations ##
+        corrected = self.data["Al Counts"] / self.data["Zn Counts"] * self.raw["Zn Counts"]
+        self.data["corrected Al Counts"] = corrected.iloc[self.window[0]:self.window[1]]
+
+    def normalize(self, Zn_standard):
+        window = self.data.iloc[self.window[0]:self.window[1]]
+        self.data["normalized Al Counts"] = window["corrected Al Counts"] * Zn_standard / self.raw["Zn Counts"]
+        self.Al = self.data["normalized Al Counts"].mean()
+        self.Al_error = self.data["normalized Al Counts"].std()
+
+
+def getFolder(folder, figures=False):
     """ create SIMS_data list from all SIMS data in a folder
         return SIMS_data a dictionary with filename, run_no, sub, and data as a df
     """
@@ -133,8 +97,10 @@ def getFolder(folder):
         folder = folder + "/"
 
     sample_index = "SIMS_sample_index.txt"
+    rsf = 4e15
 
     sims_data = []
+
     with open(folder + sample_index, "r") as f:
         for lines in f:
             if not lines.startswith("#"):
@@ -147,39 +113,49 @@ def getFolder(folder):
                     run_no = 0
                     sub = None
                     filename = lines.split()[0]
-            file_data = getFile(folder + filename)
+            file_data = sims_class(folder + filename)
 
             sims_data.append({"filename": filename, "data": file_data, "run_no": run_no, "sub": sub})
 
     sims_data = sorted(sims_data, key=lambda k: k["run_no"])
+    cal_data = [s["data"] for s in sims_data if s["run_no"] == 0][0]
+
+    Zn_cal = cal_data.raw["Zn Counts"]
+
+    for s in sims_data:
+        sims_object = s["data"]
+        sims_object.normalize(Zn_cal)
+        s.update({"Al_content": sims_object.Al * rsf,
+                  "Al_error": sims_object.Al_error * rsf,
+                  "SIMS_T": sims_object.thickness})
+
+        #### Save figure for visual check of SIMS data fit
+        if figures == True:
+
+            figure_folder = folder + "SIMS_fits/"
+
+            if not os.path.exists(figure_folder):
+                os.makedirs(figure_folder)
+            save_name = "SIMS_%s%s.png" % (s["run_no"], s["sub"])
+
+            f, ax = plt.subplots(1, 1)
+            ax2 = ax.twinx()
+            data = sims_object.data
+            x = data["Depth"]
+            y = data["Zn Counts"]
+            y2 = data["Al Counts"] * rsf
+            y3 = data["normalized Al Counts"] * rsf
+            ax.plot(x, y, label="Zn")
+            ax2.plot(x, y2, color="red", label="raw Al")
+            ax2.plot(x, y3, color="green", label="normalized Al")
+            ax.legend(loc="upper left")
+            ax2.legend(loc="upper right")
+
+
+
+        window = (data.iloc[sims_object.window[0]]["Depth"], data.iloc[sims_object.window[1]]["Depth"])
+        ax.axvline(window[0])
+        ax.axvline(window[1])
+        f.savefig(figure_folder + save_name)
 
     return sims_data
-
-def calculate(sims_data):
-    for dataset in sims_data:
-        data = dataset["data"]
-
-        x = data.dropna().loc[:, "Depth"]
-        y = data.dropna().loc[:, "Al Counts"]
-        dydx = data.dropna().loc[:, "diff"]
-
-        mxi = y[dydx == min(dydx[x > 25])].index.tolist()[0]
-        thick = x[dydx == min(dydx[x > 25])].tolist()[0]
-        sampler_window = mxi * 0.95
-
-        lower_sampler_index = int(mxi / 2 - sampler_window / 2)
-        upper_sampler_index = int(mxi / 2 + sampler_window / 2)
-
-        al_cont = data.loc[lower_sampler_index:upper_sampler_index, "Al Counts"].mean()
-        error = data.loc[lower_sampler_index:upper_sampler_index, "Al Counts"].std()
-
-        dataset.update({"Al_content": float(al_cont), "Al_error": float(error), "thick": float(thick)})
-
-def to_list(samples_data, sims_data):
-        for dataset in samples_data:
-            for sim in sims_data:
-                if dataset["run_no"] == sim["run_no"] and dataset["sub"] == sim["sub"]:
-                    dataset.update(
-                        {"Al_content": sim["Al_content"],
-                         "Al_error": sim["Al_error"],
-                         "SIMS_T": sim["thick"]})
