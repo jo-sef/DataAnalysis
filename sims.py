@@ -34,7 +34,7 @@ def getFile(filename):
 
 def t_index(data):
     """
-    Find the depth from the Zn counts. Depth is where the rate of change in the negative direction is minimum. 
+    Find the depth from the Zn counts. Depth is where the rate of change in the negative direction is minimum.
     Above 25 nm because of surface effects
     """
 
@@ -48,7 +48,7 @@ def t_index(data):
 
 class sims_class:
     """
-    
+
     """
 
     normalized = False
