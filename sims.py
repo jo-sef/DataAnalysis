@@ -177,9 +177,20 @@ def getFolder(folder, figures=False):
 
 
 
-        window = (data.iloc[sims_object.window[0]]["Depth"], data.iloc[sims_object.window[1]]["Depth"])
-        ax.axvline(window[0])
-        ax.axvline(window[1])
-        f.savefig(figure_folder + save_name)
-        plt.close("all")
+            window = (data.iloc[sims_object.window[0]]["Depth"], data.iloc[sims_object.window[1]]["Depth"])
+            ax.axvline(window[0])
+            ax.axvline(window[1])
+            f.savefig(figure_folder + save_name)
+            plt.close("all")
     return sims_data
+
+def to_list(samples_data, sims_data):
+    for dataset in samples_data:
+        for sim in sims_data:
+            if str(dataset["run_no"]) == str(sim["run_no"]) and str(dataset["sub"]) == str(sim["sub"]):
+                dataset.update(
+                    {"Al_content": sim["Al_content"],
+                     "Al_error": sim["Al_error"],
+                     "Zn_content": sim["Zn_content"],
+                     "Zn_error": sim["Zn_error"],
+                     "SIMS_T": sim["SIMS_T"]})
