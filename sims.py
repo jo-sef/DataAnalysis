@@ -6,6 +6,7 @@ from scipy.interpolate import interp1d
 import pandas as pd
 import os
 import re
+import matplotlib.pyplot as plt
 
 
 def getFile(filename):
@@ -14,7 +15,6 @@ def getFile(filename):
     :param filename: name of sims output file (text format)
     :return: a dataframe of depth,Al Counts, Zn Counts
     """
-    print(filename)
     with open(filename, "r") as fh:
         data = pd.read_table(fh, names=["Al_depth", "Al_count", "Zn_depth", "Zn_count"], skiprows=15, delimiter="\t*",
                              skipfooter=140, engine="python")
@@ -42,9 +42,7 @@ def t_index(data):
     x = data.dropna().loc[:, "Depth"]
     y = data.dropna().loc[:, col]
 
-    dydx = y.diff().dropna()[x > 25]
-
-    mxi = y.idxmin()
+    mxi = y[x > 10].idxmin()-2
 
     return mxi
 
@@ -77,14 +75,22 @@ class sims_class:
 
         ##average Counts
         self.raw = self.data.iloc[self.window[0]:self.window[1]].mean()
+        self.std = self.data.iloc[self.window[0]:self.window[1]].std()
 
         ## Correcting for Zn variations ##
-        corrected = self.data["Al Counts"] / self.data["Zn Counts"] * self.raw["Zn Counts"]
-        self.data["corrected Al Counts"] = corrected.iloc[self.window[0]:self.window[1]]
+        if self.raw["Al Counts"] > 1e15:
+            rsf = 1
+        else:
+            rsf = 4e15
+        self.raw = self.raw * rsf
+        self.std = self.std * rsf
+        corrected_Al = self.data["Al Counts"] / self.data["Zn Counts"] * self.raw["Zn Counts"]*rsf
+
+        self.data["corrected Al Counts"] = corrected_Al.iloc[self.window[0]:self.window[1]]
 
     def normalize(self, Zn_standard):
-        window = self.data.iloc[self.window[0]:self.window[1]]
-        self.data["normalized Al Counts"] = window["corrected Al Counts"] * Zn_standard / self.raw["Zn Counts"]
+        self.data["normalized Al Counts"] = self.data["corrected Al Counts"] *Zn_standard/ self.raw["Zn Counts"]
+        self.Zn_correction_factor =Zn_standard/self.data.mean()["Zn Counts"]
         self.Al = self.data["normalized Al Counts"].mean()
         self.Al_error = self.data["normalized Al Counts"].std()
 
@@ -97,36 +103,51 @@ def getFolder(folder, figures=False):
         folder = folder + "/"
 
     sample_index = "SIMS_sample_index.txt"
-    rsf = 4e15
 
     sims_data = []
 
     with open(folder + sample_index, "r") as f:
         for lines in f:
-            if not lines.startswith("#"):
-                search = re.findall("(\S*.dp_rpc_asc)\t(\d+)([aAMmRrCc])", lines)
-                if len(search) != 0:
-                    filename, run_no, sub = search[0]
-                    run_no = int(run_no)
 
-                if len(search) < 1 and re.search("Al_uf", lines):
+            if lines.startswith("#") or not lines.strip():
+                continue
+            search = re.findall("(\S*.dp_rpc_asc)\t?\s*?(\d+)([aAMmRrCc])", lines)
+            if len(search) != 0:
+                filename, run_no, sub = search[0]
+                run_no = int(run_no)
+
+            if len(search) == 0 and re.search("Al_uf", lines):
+                if 0 in [s["run_no"] for s in sims_data]:
+                    run_no = 1
+                else:
                     run_no = 0
-                    sub = None
-                    filename = lines.split()[0]
+                sub = None
+                filename = lines.split()[0]
+
             file_data = sims_class(folder + filename)
 
             sims_data.append({"filename": filename, "data": file_data, "run_no": run_no, "sub": sub})
 
     sims_data = sorted(sims_data, key=lambda k: k["run_no"])
-    cal_data = [s["data"] for s in sims_data if s["run_no"] == 0][0]
-
-    Zn_cal = cal_data.raw["Zn Counts"]
+    cal_data = [s for s in sims_data if (s["run_no"] == 0) or (s["run_no"]==1)]
 
     for s in sims_data:
         sims_object = s["data"]
+        date = re.findall("[0-9]+",s["filename"])[0]
+        for cal in cal_data:
+            cal_date = re.findall("[0-9]+",cal["filename"])[0]
+            if cal_date == date:
+                Zn_cal = cal["data"].raw["Zn Counts"]
+
         sims_object.normalize(Zn_cal)
-        s.update({"Al_content": sims_object.Al * rsf,
-                  "Al_error": sims_object.Al_error * rsf,
+
+        Al_content = sims_object.Al
+        error = sims_object.Al_error
+
+        s.update({"Al_content": Al_content,
+                  "Al_error": error,
+                  "Zn_content": sims_object.raw["Zn Counts"],
+                  "Zn_error": sims_object.std["Zn Counts"],
                   "SIMS_T": sims_object.thickness})
 
         #### Save figure for visual check of SIMS data fit
@@ -139,17 +160,20 @@ def getFolder(folder, figures=False):
             save_name = "SIMS_%s%s.png" % (s["run_no"], s["sub"])
 
             f, ax = plt.subplots(1, 1)
+            f.suptitle("%s%s" %(s["run_no"],s["sub"]))
             ax2 = ax.twinx()
             data = sims_object.data
             x = data["Depth"]
             y = data["Zn Counts"]
-            y2 = data["Al Counts"] * rsf
-            y3 = data["normalized Al Counts"] * rsf
+
+            y2 = data["Al Counts"]
+            y3 = data["normalized Al Counts"]
             ax.plot(x, y, label="Zn")
             ax2.plot(x, y2, color="red", label="raw Al")
             ax2.plot(x, y3, color="green", label="normalized Al")
             ax.legend(loc="upper left")
             ax2.legend(loc="upper right")
+            f.text(0.3,0.3,"calibration Zn:%1.3f" %Zn_cal)
 
 
 
@@ -157,5 +181,5 @@ def getFolder(folder, figures=False):
         ax.axvline(window[0])
         ax.axvline(window[1])
         f.savefig(figure_folder + save_name)
-
+        plt.close("all")
     return sims_data
