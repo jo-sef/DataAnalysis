@@ -34,7 +34,7 @@ def getFile(filename):
 
 def t_index(data):
     """
-    Find the depth from the Zn counts. Depth is where the rate of change in the negative direction is minimum. 
+    Find the depth from the Zn counts. Depth is where the rate of change in the negative direction is minimum.
     Above 25 nm because of surface effects
     """
 
@@ -48,7 +48,7 @@ def t_index(data):
 
 class sims_class:
     """
-    
+
     """
 
     normalized = False
@@ -74,23 +74,30 @@ class sims_class:
         self.thickness = self.data.iloc[self.mxi]["Depth"]
 
         ##average Counts
+
+
         self.raw = self.data.iloc[self.window[0]:self.window[1]].mean()
         self.std = self.data.iloc[self.window[0]:self.window[1]].std()
 
-        ## Correcting for Zn variations ##
         if self.raw["Al Counts"] > 1e15:
             rsf = 1
         else:
             rsf = 4e15
-        self.raw = self.raw * rsf
-        self.std = self.std * rsf
-        corrected_Al = self.data["Al Counts"] / self.data["Zn Counts"] * self.raw["Zn Counts"]*rsf
+        self.data["Al Counts"] = self.data["Al Counts"]*rsf
 
-        self.data["corrected Al Counts"] = corrected_Al.iloc[self.window[0]:self.window[1]]
+        ## Correcting for Zn variations ##
+
+        corrected_Al = self.data.loc[:,"Al Counts"] / self.data.loc[:,"Zn Counts"] * self.raw["Zn Counts"]
+
+        self.raw = self.raw
+        self.std = self.std
+
+        self.data.loc[:,"corrected Al Counts"] = corrected_Al.iloc[self.window[0]:self.window[1]]
 
     def normalize(self, Zn_standard):
-        self.data["normalized Al Counts"] = self.data["corrected Al Counts"] *Zn_standard/ self.raw["Zn Counts"]
-        self.Zn_correction_factor =Zn_standard/self.data.mean()["Zn Counts"]
+        self.Zn_correction_factor =Zn_standard/self.raw["Zn Counts"]
+        self.data.loc[:,"normalized Al Counts"] = self.data.loc[:,"corrected Al Counts"] *self.Zn_correction_factor
+
         self.Al = self.data["normalized Al Counts"].mean()
         self.Al_error = self.data["normalized Al Counts"].std()
 
@@ -132,12 +139,15 @@ def getFolder(folder, figures=False):
     cal_data = [s for s in sims_data if (s["run_no"] == 0) or (s["run_no"]==1)]
 
     for s in sims_data:
+        Zn_cal = None
         sims_object = s["data"]
         date = re.findall("[0-9]+",s["filename"])[0]
         for cal in cal_data:
             cal_date = re.findall("[0-9]+",cal["filename"])[0]
             if cal_date == date:
                 Zn_cal = cal["data"].raw["Zn Counts"]
+            else:
+                continue
 
         sims_object.normalize(Zn_cal)
 
@@ -168,9 +178,11 @@ def getFolder(folder, figures=False):
 
             y2 = data["Al Counts"]
             y3 = data["normalized Al Counts"]
+            y4 = data["corrected Al Counts"]
             ax.plot(x, y, label="Zn")
             ax2.plot(x, y2, color="red", label="raw Al")
             ax2.plot(x, y3, color="green", label="normalized Al")
+            ax2.plot(x, y4, color="black", label="corrected Al")
             ax.legend(loc="upper left")
             ax2.legend(loc="upper right")
             f.text(0.3,0.3,"calibration Zn:%1.3f" %Zn_cal)
