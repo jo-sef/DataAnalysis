@@ -42,7 +42,7 @@ def t_index(data):
     x = data.dropna().loc[:, "Depth"]
     y = data.dropna().loc[:, col]
 
-    mxi = y[x > 10].idxmin()-2
+    mxi = y[x > 15].idxmin()
 
     return mxi
 
@@ -105,6 +105,7 @@ class sims_class:
 def getFolder(folder, figures=False):
     """ create SIMS_data list from all SIMS data in a folder
         return SIMS_data a dictionary with filename, run_no, sub, and data as a df
+
     """
     if not folder.endswith("/"):
         folder = folder + "/"
@@ -113,6 +114,7 @@ def getFolder(folder, figures=False):
 
     sims_data = []
 
+### Record data from each file so that the calibration files can be used in next loop.
     with open(folder + sample_index, "r") as f:
         for lines in f:
 
@@ -137,9 +139,12 @@ def getFolder(folder, figures=False):
 
     sims_data = sorted(sims_data, key=lambda k: k["run_no"])
     cal_data = [s for s in sims_data if (s["run_no"] == 0) or (s["run_no"]==1)]
-
+### use calibration for
     for s in sims_data:
         Zn_cal = None
+        Al_content = None
+
+### Get class instance and find the matching cal file.
         sims_object = s["data"]
         date = re.findall("[0-9]+",s["filename"])[0]
         for cal in cal_data:
@@ -186,6 +191,7 @@ def getFolder(folder, figures=False):
             ax.legend(loc="upper left")
             ax2.legend(loc="upper right")
             f.text(0.3,0.3,"calibration Zn:%1.3f" %Zn_cal)
+            f.text(0.3,0.2,"Al content:%1.3g" %Al_content)
 
 
 
