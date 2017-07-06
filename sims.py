@@ -83,14 +83,11 @@ class sims_class:
             rsf = 1
         else:
             rsf = 4e15
-        self.data["Al Counts"] = self.data["Al Counts"]*rsf
+        self.data["Al Counts"] = self.data.loc[:,"Al Counts"]*rsf
 
         ## Correcting for Zn variations ##
 
         corrected_Al = self.data.loc[:,"Al Counts"] / self.data.loc[:,"Zn Counts"] * self.raw["Zn Counts"]
-
-        self.raw = self.raw
-        self.std = self.std
 
         self.data.loc[:,"corrected Al Counts"] = corrected_Al.iloc[self.window[0]:self.window[1]]
 
