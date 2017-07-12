@@ -58,8 +58,9 @@ def getFile(result_filename, folder="./", thickness_file="AZO_hall_thicknesses_2
 
 
             if t_sample + t_sub == sample + sub:
-                hall_results["c_p"] = hall_results["p"] / file_thickness * t_thick
-                hall_results["c_n"] = hall_results["n"] / file_thickness * t_thick
+                hall_results["c_p"] = hall_results["p"] * file_thickness / t_thick
+                hall_results["c_n"] = hall_results["n"] * file_thickness / t_thick
+                ##n = constant / d
 
                 return sample, sub, hall_results["c_p"].mean(), hall_results["mob"].mean(),hall_results["c_n"].mean(), t_thick
 
