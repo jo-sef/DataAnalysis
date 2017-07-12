@@ -48,13 +48,20 @@ def getFile(result_filename, folder="./", thickness_file="AZO_hall_thicknesses_2
                 for samples in thickness_index:
                     t_sample = samples[0]
                     t_sub = samples[1]
+                    match = False
 
                     if t_sample + t_sub == sample + sub:
+
                         t_thick = float(samples[2])
                         hall_results["c_p"] = hall_results["p"] / file_thickness * t_thick
                         hall_results["c_n"] = hall_results["n"] / file_thickness * t_thick
 
-    return sample, sub, hall_results["c_p"].mean(), hall_results["mob"].mean(),hall_results["c_n"].mean(), t_thick
+                        return sample, sub, hall_results["c_p"].mean(), hall_results["mob"].mean(),hall_results["c_n"].mean(), t_thick
+        if not match:
+            print(sample+sub+" not in thickness file %s" %thickness_file)
+            return sample, sub, hall_results["p"].mean(), hall_results["mob"].mean(),hall_results["n"].mean(), file_thickness
+
+
 
 ##get results from all files in folder
 def getFolder(folder,thickness_file="AZO_hall_thicknesses_20170314.txt"):
@@ -84,7 +91,7 @@ def getFolder(folder,thickness_file="AZO_hall_thicknesses_20170314.txt"):
         if len(hall_data) > 0:
             if sample + sub in [items["run_no"] + items["sub"] for items in HALL_data]:
                 continue
-        print(sample + sub, resistivity, mobility, carrier_density, thickness)
+#        print(sample + sub, resistivity, mobility, carrier_density, thickness)
 
         hall_data.append({"run_no": sample,
                           "sub": sub,
@@ -93,7 +100,7 @@ def getFolder(folder,thickness_file="AZO_hall_thicknesses_20170314.txt"):
                           "hall_n": carrier_density,
                           "thickness": thickness})
     else:
-        print(sample + sub, resistivity, mobility, carrier_density, thickness)
+    #    print(sample + sub, resistivity, mobility, carrier_density, thickness)
         hall_data.append({"run_no": sample,
                           "sub": sub,
                           "hall_p": resistivity,
