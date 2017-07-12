@@ -42,24 +42,27 @@ def getFile(result_filename, folder="./", thickness_file="AZO_hall_thicknesses_2
 
 
         with open(folder + thickness_file) as thickness_fh:
-                content = thickness_fh.read()
-                thickness_index = re.findall("(\d\d\d)([RrMmCcAa])\t?\s+?(\d\d\d)", content)
+            content = thickness_fh.read()
+            thickness_index = re.findall("(\d\d\d)([RrMmCcAa])\t?\s+?(\d\d\d)", content)
+            samples_in_index = ["{0}{1}".format(x[0].strip(), x[1].strip()) for x in thickness_index]
 
-                for samples in thickness_index:
-                    t_sample = samples[0]
-                    t_sub = samples[1]
-                    match = False
+            if sample + sub not in samples_in_index:
+                print(sample + sub + " not in thickness file %s" % thickness_file)
+                return sample, sub, hall_results["p"].mean(), hall_results["mob"].mean(), hall_results[
+                    "n"].mean(), file_thickness
 
-                    if t_sample + t_sub == sample + sub:
-                        match = True
-                        t_thick = float(samples[2])
-                        hall_results["c_p"] = hall_results["p"] / file_thickness * t_thick
-                        hall_results["c_n"] = hall_results["n"] / file_thickness * t_thick
+        for samples in thickness_index:
+            t_sample = samples[0].strip()
+            t_sub = samples[1].strip()
+            t_thick = float(samples[2])
 
-                        return sample, sub, hall_results["c_p"].mean(), hall_results["mob"].mean(),hall_results["c_n"].mean(), t_thick
-        if not match:
-            print(sample+sub+" not in thickness file %s" %thickness_file)
-            return sample, sub, hall_results["p"].mean(), hall_results["mob"].mean(),hall_results["n"].mean(), file_thickness
+
+            if t_sample + t_sub == sample + sub:
+                hall_results["c_p"] = hall_results["p"] / file_thickness * t_thick
+                hall_results["c_n"] = hall_results["n"] / file_thickness * t_thick
+
+                return sample, sub, hall_results["c_p"].mean(), hall_results["mob"].mean(),hall_results["c_n"].mean(), t_thick
+
 
 
 
@@ -70,8 +73,6 @@ def getFolder(folder,thickness_file="AZO_hall_thicknesses_20170314.txt"):
         folder = folder+"/"
 
     files_in_folder = [x for x in os.listdir(folder) if (x.endswith(".txt") and x !=thickness_file and x !="folderIndex.txt")]
-
-
 
     for items in files_in_folder:
         run_no_in_name = re.search("(\d\d\d)([RrCcMmAa])", items)
