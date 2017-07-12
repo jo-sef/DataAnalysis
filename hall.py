@@ -51,7 +51,7 @@ def getFile(result_filename, folder="./", thickness_file="AZO_hall_thicknesses_2
                     match = False
 
                     if t_sample + t_sub == sample + sub:
-
+                        match = True
                         t_thick = float(samples[2])
                         hall_results["c_p"] = hall_results["p"] / file_thickness * t_thick
                         hall_results["c_n"] = hall_results["n"] / file_thickness * t_thick
