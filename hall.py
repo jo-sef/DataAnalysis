@@ -3,6 +3,7 @@
 HALL_data = []
 import os
 import re
+import pandas as pd
 
 ###Get results from a single file
 def getFile(result_filename, folder="./", thickness_file="AZO_hall_thicknesses_20170314.txt"):
@@ -11,43 +12,36 @@ def getFile(result_filename, folder="./", thickness_file="AZO_hall_thicknesses_2
     if re.search("(\d\d\d)([RrCcMmAa])", result_filename):
         sample, sub = re.findall("(\d\d\d)([RrCcMmAa])", result_filename)[0]
 
-        thickness_in_filename = re.search("(\d?\d\d)nm", result_filename)
+    with open(result_filename,"r",encoding = "latin-1") as fh:
+        file_content = fh.read()
 
-        if thickness_in_filename:
-            file_thickness = float(re.findall("(\d?\d\d)nm", result_filename)[0])
-        else:
-            file_thickness = 400
+        file_thickness = re.findall("Thickness =\s*?\t*?(\d?\d?\d\.\d)",file_content)[0]
+        file_thickness = float(file_thickness)
 
-        with open(result_filename, "r", encoding = "latin-1") as result_fh:
+        # read results
+        hall_results = {"field":[],"p":[],"coeff":[],"pn":[],"n":[],"mob":[],"temp":[]}
+        hall_col = ["field","p","coeff","pn","n","mob","temp"]
 
-            for line in result_fh:
 
-                if line.startswith("<Step 3: Variable Field Measurement>"):
-                    for i in range(23):
-                        next(result_fh)
-                    break
+        pattern=re.compile('(\d\S+)\s+?\t*?(\S+)\s+?\t*?(\S+)\s+?\t*?([np])\s+?\t*?(\S+)\s+?\t*?(\S+)\s+?\t*?(\S+)')
 
-            carrier_density = 0.0
-            mobility = 0.0
-            resistivity = 0.0
-            i = 0
-            for line in result_fh:
-                if len(line) > 2:
-                    new_density = float(line.split()[4].strip())
-                    new_mobility = float(line.split()[5].strip())
-                    new_resistivity = float(line.split()[1].strip())
+        for l in file_content.splitlines():
+            m = pattern.match(l)
 
-                    carrier_density += new_density
-                    mobility += new_mobility
-                    resistivity += new_resistivity
+            if m:
+                l = pattern.findall(l)[0]
 
-                    i += 1
-            ###get averages
-            av_resistivity = resistivity / i
-            av_mobility = mobility / i
-            av_carrier_density = carrier_density / i
+                for i,col in enumerate(hall_col):
+                    try:
+                        hall_results[col].append(float(l[i]))
 
-            with open(folder + thickness_file) as thickness_fh:
+                    except:
+                        hall_results[col].append(l[i])
+
+        hall_results = pd.DataFrame(hall_results)
+
+
+        with open(folder + thickness_file) as thickness_fh:
                 content = thickness_fh.read()
                 thickness_index = re.findall("(\d\d\d)([RrMmCcAa])\t?\s+?(\d\d\d)", content)
 
@@ -55,15 +49,12 @@ def getFile(result_filename, folder="./", thickness_file="AZO_hall_thicknesses_2
                     t_sample = samples[0]
                     t_sub = samples[1]
 
-
                     if t_sample + t_sub == sample + sub:
                         t_thick = float(samples[2])
-                        corrected_resistivity = av_resistivity / t_thick * file_thickness
-                        corrected_carrier_density = av_carrier_density / t_thick * file_thickness
+                        hall_results["c_p"] = hall_results["p"] / file_thickness * t_thick
+                        hall_results["c_n"] = hall_results["n"] / file_thickness * t_thick
 
-        return sample, sub, corrected_resistivity, av_mobility, corrected_carrier_density, t_thick
-    else:
-        return "nothing"
+    return sample, sub, hall_results["c_p"].mean(), hall_results["mob"].mean(),hall_results["c_n"].mean(), t_thick
 
 ##get results from all files in folder
 def getFolder(folder,thickness_file="AZO_hall_thicknesses_20170314.txt"):
@@ -71,18 +62,19 @@ def getFolder(folder,thickness_file="AZO_hall_thicknesses_20170314.txt"):
     if not folder.endswith("/"):
         folder = folder+"/"
 
-    files_in_folder = os.listdir(folder)
+    files_in_folder = [x for x in os.listdir(folder) if (x.endswith(".txt") and x !=thickness_file and x !="folderIndex.txt")]
+
+
 
     for items in files_in_folder:
         run_no_in_name = re.search("(\d\d\d)([RrCcMmAa])", items)
-        if not items.endswith(".txt") or not run_no_in_name:
+        if not run_no_in_name:
+            print(items,"run_no missing")
             continue
 
         file = items.strip()
-        try:
-            results = getFile(folder+file, folder=folder,thickness_file=thickness_file)
-        except:
-            print("getFile error: "+file)
+
+        results = getFile(folder+file, folder=folder,thickness_file=thickness_file)
 
         if results == "nothing":
             continue

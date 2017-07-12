@@ -179,9 +179,9 @@ def extract_peak(dataset, hkl, tol=0.5):
     return x2,y2
 
 def fit_peaks(XRD_data, XRD_folder = report_folder):
-    """ Make fits for the expected peaks in the XRD spectra. Stores the results in image files and 
+    """ Make fits for the expected peaks in the XRD spectra. Stores the results in image files and
         text files. The text files can be added to the XRD_data list by using some other function.
-        
+
         PeakFile will read a single file and generate a single pandas dataframe
         peakFolder will read all the files in a folder and generate a list of dataframes
         append_peaks_data will append the peak data to samples_data list
@@ -276,7 +276,7 @@ def fit_peaks(XRD_data, XRD_folder = report_folder):
         plt.close(f)
 
 def single_fit_pvoigt(dataset, hkl, plot_figure=False):
-    """ 
+    """
     fit using a single model, return out,comps,init, and list of parameters
     """
 
@@ -374,7 +374,7 @@ def get_rockfolder(folder):
     return rock_data
 
 def fit_rocking(dataset, shift, plot_figure=False):
-    """ 
+    """
     fit using a single model, return out,comps,init, and list of parameters
     """
     from lmfit.models import PseudoVoigtModel
@@ -579,8 +579,8 @@ def rockFolder(folder, par_or_report="report"):
 
 def rock_to_list(samples_data,rock_list):
     """
-    
-    :param samples_data: 
+
+    :param samples_data:
     :param rock_list: = rockFolder()
     :return: returns nothing, but adds fwhm of rocking curve to samples_data
     """
@@ -595,7 +595,7 @@ def rock_to_list(samples_data,rock_list):
                 sam_dat.update({key:r_dat["fwhm"]})
 
 def fit_peaks_lor(XRD_data, XRD_folder=report_folder):
-    """ Make fits for the expected peaks in the XRD spectra. Stores the results in image files and 
+    """ Make fits for the expected peaks in the XRD spectra. Stores the results in image files and
         text files. The text files can be added to the XRD_data list by using some other function.
 
         PeakFile will read a single file and generate a single pandas dataframe
@@ -746,7 +746,7 @@ def fit_peaks_lor(XRD_data, XRD_folder=report_folder):
 
 def fit_xrd_folder(xrd_folder, XRD_data, noise = 15):
     """
-    
+
     :param xrd_folder: folder with XRD data
     :param XRD_data: list of dictionaries with XRD data
     :param noise: the limit for whether the peaks can be included or not.
@@ -954,6 +954,11 @@ def peaks_to_list(samples_data,peak_data):
                         if "peak_int" not in p_dat["peaks"].keys():
                             print(p_dat["run_no"]+p_dat["sub"]," no peak_int")
                             continue
+                        peak100 = p_dat["peaks"].loc["100","Peak"]
+                        peak101 = p_dat["peaks"].loc["101", "Peak"]
+                        peak002 = p_dat["peaks"].loc["002", "Peak"]
+                        peak110 = p_dat["peaks"].loc["110", "Peak"]
+
                         mag100 = p_dat["peaks"].loc["100","peak_int"]
                         mag101 = p_dat["peaks"].loc["101", "peak_int"]
                         mag002 = p_dat["peaks"].loc["002", "peak_int"]
@@ -969,10 +974,14 @@ def peaks_to_list(samples_data,peak_data):
                                         "mag002": mag002,
                                         "mag110": mag110})
 
+                        sam_dat.update({"peak100": peak100,
+                                        "peak101": peak101,
+                                        "peak002": peak002,
+                                        "peak110": peak110})
+
                         sam_dat.update({"fwhm100": fwhm100,
                                         "fwhm101": fwhm101,
                                         "fwhm002": fwhm002,
                                         "fwhm110": fwhm110})
                         continue
                     sam_dat.update({key: p_dat[key]})
-
