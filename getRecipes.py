@@ -10,7 +10,7 @@ import numpy as np
 
 def p_press(MO, bub_temp):
     """
-    
+
     :param MO: DEZn, TEGa, tBuOH, or TMAl
     :param bub_temp: temperature of bubbler
     :return: partial pressure in mmHg (Torr)
@@ -26,8 +26,8 @@ def p_press(MO, bub_temp):
 
 def runDoc(runs_location="./"):
     """
-    
-    :param runs_location: 
+
+    :param runs_location:
     :return: raw dataframe of runs.docx
     """
     if runs_location[-1]!="/":
@@ -88,7 +88,7 @@ def runDoc(runs_location="./"):
 
 def get_flow(runs_df,precursor, sample):
     """
-    
+
     :param runs_df: runs = runDoc()
     :param precursor: DEZn, TMAl, tBuOH, TEGa, MO_carrier, Gas_carrier
     :param sample: run_no of recipe
@@ -140,10 +140,10 @@ def get_flow(runs_df,precursor, sample):
 
 def get_temp(runs,precursor, sample):
     """
-    
-    :param runs: 
-    :param precursor: 
-    :param sample: 
+
+    :param runs:
+    :param precursor:
+    :param sample:
     :return: temperature of bubbler in C
     """
     if precursor == "tBuOH":
@@ -180,7 +180,7 @@ def get_runs(run_location):
     """Read runs.docx and return a pandas dataframe with the columns:
     'RUN', 'mat', 'DEZn flow', 'DEZn temp','tBuOH flow', 'tBuOH temp', "TMAl flow",
     "TMAl temp", "TEGa flow", "TEGa temp",'MO_carrier', "Gas_carrier"
-    
+
     run_location contains path and name of folder containing runs.docx
     """
     run_df = runDoc(run_location)
@@ -205,7 +205,7 @@ def get_runs(run_location):
     return new_runs_df
 
 def add_flows(a_list,runs):
-    """ Add flows from runs to a_list. runs is obtained by importing getRecipes : 
+    """ Add flows from runs to a_list. runs is obtained by importing getRecipes :
     runs = getRecipes.get_runs(runs_location)
     """
 
@@ -255,11 +255,10 @@ def add_flows(a_list,runs):
                        "TEGa molar": TEGa_molar_flow,
                        "TMAl molar": TMAl_molar_flow,
                        "tBuOH molar": O_molar_flow,
+                       "MO total":MO_total,
                        "vi_ii": vi_ii,
-                        "vi_mo":vi_mo})
-
-
-        sample.update({'TMAl_flow': float(TMAl_flow),
+                        "vi_mo":vi_mo,
+                        'TMAl_flow': float(TMAl_flow),
                        'tBuOH_flow': float(tBuOH_flow),
                        "MO_carrier": float(MO_carrier),
                        "DEZn_flow":float(DEZn_flow),
@@ -293,4 +292,3 @@ def make_samples_data(start_run=688, end_run=722):
     samples_data = sorted(samples_data, key=lambda k: k["run_no"])
 
     return samples_data
-
