@@ -587,12 +587,17 @@ def rock_to_list(samples_data,rock_list):
     for r_dat in rock_list:
         for sam_dat in samples_data:
             if r_dat["run_no"] == sam_dat["run_no"] and r_dat["sub"] == sam_dat["sub"]:
-                d_range = r_dat["range"]
-                if d_range[0] in ["12","13"]:
-                    key = "rocking13"
-                if d_range[0] in ["23"]:
-                    key = "rocking23"
-                sam_dat.update({key:r_dat["fwhm"]})
+                    d_range = r_dat["range"]
+                    if d_range[0] in ["12","13"]:
+                        rkey = "rocking13"
+                        other_key = "rocking23"
+                    if d_range[0] in ["23"]:
+                        rkey = "rocking23"
+                        other_key = "rocking13"
+
+                    sam_dat.update({rkey:r_dat["fwhm"],
+                                    other_key: np.nan})
+                    continue
 
 def fit_peaks_lor(XRD_data, XRD_folder=report_folder):
     """ Make fits for the expected peaks in the XRD spectra. Stores the results in image files and
@@ -940,6 +945,14 @@ def lattice_params(dataset):
 def add_lattice_params(peak_data):
     for sam in peak_data:
         lattice_params(sam)
+def scherrer(fwhm,peak_position):
+
+    k = 0.9
+    wl = alpha1
+    B = fwhm/180*math.pi
+    D = k * wl /(fwhm* math.cos(peak_position/180 *math.pi))
+    #### Holzwarth2011
+    return D
 
 def peaks_to_list(samples_data,peak_data):
     """ Append all keys of peak_data to the corresponding sample in samples_data
@@ -969,7 +982,7 @@ def peaks_to_list(samples_data,peak_data):
                         fwhm002 = p_dat["peaks"].loc["002", "fwhm"]
                         fwhm110 = p_dat["peaks"].loc["110", "fwhm"]
 
-                        sam_dat.update({"mag100":mag100,
+                        sam_dat.update({"mag100": mag100,
                                         "mag101": mag101,
                                         "mag002": mag002,
                                         "mag110": mag110})
@@ -983,5 +996,10 @@ def peaks_to_list(samples_data,peak_data):
                                         "fwhm101": fwhm101,
                                         "fwhm002": fwhm002,
                                         "fwhm110": fwhm110})
+
+                        sam_dat.update({"grain002": scherrer(fwhm002, peak002),
+                                        "grain110": scherrer(fwhm110,peak110)})
+
+
                         continue
                     sam_dat.update({key: p_dat[key]})
