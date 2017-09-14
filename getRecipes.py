@@ -205,7 +205,8 @@ def get_runs(run_location):
     return new_runs_df
 
 def add_flows(a_list,runs):
-    """ Add flows from runs to a_list. runs is obtained by importing getRecipes :
+    """ Add flows from runs to a_list. runs is obtained by importing getRecipes:
+    and calculates molar ratios based on p_press
     runs = getRecipes.get_runs(runs_location)
     """
 
@@ -242,11 +243,14 @@ def add_flows(a_list,runs):
 
         if DEZn_flow != 0 and O_molar_flow != 0:
             vi_ii = O_molar_flow /DEZn_molar_flow * MO_total / Gas_total
+            ii = DEZn_molar_flow/MO_total
+            vi = O_molar_flow/Gas_total
         else:
             vi_ii = np.nan
 
         if TMAl_flow != 0 or TEGa_flow !=0:
             vi_mo = O_molar_flow/(DEZn_molar_flow+TEGa_molar_flow+TMAl_molar_flow) * MO_total / Gas_total
+            iii = (TMAl_molar_flow+TEGa_molar_flow)/MO_total
 
 
 
@@ -258,6 +262,9 @@ def add_flows(a_list,runs):
                        "MO total":MO_total,
                        "vi_ii": vi_ii,
                         "vi_mo":vi_mo,
+                       "ii":ii,
+                       "iii":iii,
+                       "vi":vi,
                         'TMAl_flow': float(TMAl_flow),
                        'tBuOH_flow': float(tBuOH_flow),
                        "MO_carrier": float(MO_carrier),
