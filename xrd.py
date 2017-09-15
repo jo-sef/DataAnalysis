@@ -21,7 +21,7 @@ tol_o = {"100": 0.3, "002": 0.3, "101": 0.4, "110": 0.6}
 sample_list = ["709"]
 
 ##################### XRD FUNCTIONS #########################
-
+"""dataset is an element in the list of dictionaries returned by collectXRDfolder"""
 def nan_helper(y):
     """Helper to handle indices and logical indices of NaNs.
 
@@ -39,61 +39,49 @@ def nan_helper(y):
 
     return np.isnan(y), lambda z: z.nonzero()[0]
 
-def get_XRDdata(folder):
+def readXRDfile(filename):
+    with open(filename, "r") as fhandle:
+
+        cor = [x for x in re.findall('\s+([0-9]\S*\.?\S*)\,?\s+([0-9]\S*)\,?', fhandle.read())]
+
+    data = pd.DataFrame()
+    data["Angle"] = [float(a[0].strip(",")) for a in cor]
+    data["PSD"] = [float(a[1].strip(",")) for a in cor]
+    data["PSD"] = data["PSD"]*100/max(data["PSD"])
+    return data
+
+def collectXRDfolder(folder):
     """ Read all XRD files in folder and return a list of dictionaries.
         XRD_data = get_XRD(folder_with_XRD_files)
     """
-
-    folder_index = "folderIndex.txt"
     files_in_folder = os.listdir(folder)
-    files_to_list = []
+    files_to_read = []
     for filename in files_in_folder:
-        if re.search(".txt", filename) and filename != folder_index:
-            files_to_list.append(filename)
+        if re.search(".txt", filename) and re.search("\d\d\d",filename):
+            files_to_read.append(filename)
 
-    list_keys = sorted(files_to_list)
-
-    index_fh = open(folder + folder_index, "w")
-
-    for items in list_keys:
-        index_fh.write("%s \n" % items)
-
-    index_fh.close()
-
+    list_keys = sorted(files_to_read)
 
     XRD_data = []
-    with open(folder+folder_index, 'r') as get_XRD_data:
 
-        for line in get_XRD_data:
-
-            filename = line.strip()
-            if len(filename)<1:
+    for inputfile in files_to_read:
+            if len(inputfile)<1:
                 continue
             try:
-                sample,sub = re.findall("(\d\d\d)([rRCcaAmM])", filename)
+                sample,sub = re.findall("(\d\d\d)([rRCcaAmM])", inputfile)
 
             except:
-                sample,sub = re.findall("(\d\d\d)[-_]\S*([rRCcaAmM])-",filename)[0]
+                sample,sub = re.findall("(\d\d\d)[-_]\S*([rRCcaAmM])-",inputfile)[0]
 
             sub = sub.upper()
-            data = pd.DataFrame()
+            data = readXRDfile(folder+"/"+inputfile)
 
-            with open(folder+"/"+filename, "r") as fhandle:
-
-                cor = [x for x in re.findall('\s+([0-9]\S*\.?\S*)\,?\s+([0-9]\S*)\,?', fhandle.read())]
-
-
-
-            data["Angle"] = [float(a[0].strip(",")) for a in cor]
-            data["PSD"] = [float(a[1].strip(",")) for a in cor]
-
-            new_sample = {'filename': filename,
+            new_sample = {'filename': inputfile,
                           'run_no': sample,
                           "sub": sub,
                           "data": data}
 
             XRD_data.append(new_sample)
-        get_XRD_data.close()
     return XRD_data
 
 def get_x(dataset):
@@ -160,12 +148,14 @@ def extract_peak(dataset, hkl, tol=0.5):
     data = dataset["data"].copy()
     x = data.loc[:,"Angle"]
     test = (abs( x - theoretical_peak_position) < tol)
+    ###test 1 checks to see if the peak is near the theoretical peak
     temp_peak = data[test]
 
     peak_index = temp_peak.idxmax(axis=0)["PSD"]
     measured_peak_location = temp_peak.loc[peak_index, "Angle"]
 
     test2 = (abs(x - measured_peak_location) < tol)
+    ### Test2 selects a symmetric portion about the peak.
     temp_peak = data[test2]
     xx = temp_peak.loc[:,"Angle"]
     temp_peak.loc[:,"PSD"] = temp_peak.loc[:,"PSD"] - background(dataset)(xx)
@@ -178,6 +168,39 @@ def extract_peak(dataset, hkl, tol=0.5):
     y2 = np.array(temp_peak.loc[:,"PSD"])
     return x2,y2
 
+def peakfit(x2,y2,min_ang="none"):
+    from lmfit.models import VoigtModel
+    if min_ang =="none":
+        min_ang = min(x2)
+    max_y = max(y2/2)
+
+    ####Setup model and variables
+    voigt1 = VoigtModel(prefix='v1_')
+    voigt2 = VoigtModel(prefix='v2_')
+
+    mod = voigt1 + voigt2
+
+    pars = mod.make_params()
+
+    pars['v1_center'].set(min=min_ang)
+    pars['v1_sigma'].set(value=0.1, min = 0, vary=True)
+    pars['v1_amplitude'].set(value=max_y / 3, min = 0, vary=True, expr="")
+    pars['v1_gamma'].set(value=0.1, vary=True, min = 0, expr='')  # to separate sigma and gamma in voigt model
+
+    pars.add('shift', value=0.1, min=0.05, max=0.2)
+
+    pars['v2_center'].set(min=min_ang + 0.1, expr="v1_center+shift")
+    pars['v2_sigma'].set(expr="v1_sigma")
+    pars['v2_amplitude'].set(value=max_y / 6, expr="v1_amplitude/2")
+    pars['v2_gamma'].set(expr='v1_gamma')
+
+    mod = voigt1 + voigt2
+
+
+    ##### generate output #####
+
+    out = mod.fit(y2, pars, x=x2)
+    return out
 def fit_peaks(XRD_data, XRD_folder = report_folder):
     """ Make fits for the expected peaks in the XRD spectra. Stores the results in image files and
         text files. The text files can be added to the XRD_data list by using some other function.
@@ -238,7 +261,7 @@ def fit_peaks(XRD_data, XRD_folder = report_folder):
             pars['v2_gamma'].set(expr='v1_gamma')
 
             mod = voigt1 + voigt2
-            ax = ax_l[hkl]
+
 
             ##### generate output #####
             try:
@@ -250,7 +273,7 @@ def fit_peaks(XRD_data, XRD_folder = report_folder):
 
                 #################### plotting and recording results from fit ####################
 
-
+                ax = ax_l[hkl]
                 ax.plot(x2, y2)
                 ax.plot(x2, init, 'k--')
                 ax.plot(x2, out.best_fit, 'r-')
@@ -950,7 +973,8 @@ def scherrer(fwhm,peak_position):
     k = 0.9
     wl = alpha1
     B = fwhm/180*math.pi
-    D = k * wl /(fwhm* math.cos(peak_position/180 *math.pi))
+    p = peak_position/180 * math.pi
+    D = k * wl /(B* math.cos(p))
     #### Holzwarth2011
     return D
 
@@ -998,7 +1022,7 @@ def peaks_to_list(samples_data,peak_data):
                                         "fwhm110": fwhm110})
 
                         sam_dat.update({"grain002": scherrer(fwhm002, peak002),
-                                        "grain110": scherrer(fwhm110,peak110)})
+                                        "grain110": scherrer(fwhm110, peak110)})
 
 
                         continue
