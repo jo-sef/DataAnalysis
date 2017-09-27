@@ -39,320 +39,232 @@ def nan_helper(y):
 
     return np.isnan(y), lambda z: z.nonzero()[0]
 
-def readXRDfile(filename):
-    with open(filename, "r") as fhandle:
+class xrdSample:
 
-        cor = [x for x in re.findall('\s+([0-9]\S*\.?\S*)\,?\s+([0-9]\S*)\,?', fhandle.read())]
+    def readXRDfile(self,filename):
+        """ Read the Angles and intensities off the file. Assume that the intensity of the AL2O3 peak is constant for all samples because
+        the films are thin. Then we can normalise the intensities."""
 
-    data = pd.DataFrame()
-    data["Angle"] = [float(a[0].strip(",")) for a in cor]
-    data["PSD"] = [float(a[1].strip(",")) for a in cor]
-    data["PSD"] = data["PSD"]*100/max(data["PSD"])
-    return data
+        with open(filename, "r") as fhandle:
+            cor = [x for x in re.findall('\s+([0-9]\S*\.?\S*)\,?\s+([0-9]\S*)\,?', fhandle.read())]
+        data = pd.DataFrame()
+        data["Angle"] = [float(a[0].strip(",")) for a in cor]
+        data["PSD"] = [float(a[1].strip(",")) for a in cor]
+        data["PSD"] = data["PSD"]*100/max(data["PSD"])
+        return data
+    def runFromName(self):
+        try:
+            run_no,sub = re.findall("(\d\d\d)([rRCcaAmM])", self.filename)
+        except:
+            run_no,sub = re.findall("(\d\d\d)[-_]\S*([rRCcaAmM])-",self.filename)[0]
+        self.sub = sub.upper()
+        self.run_no = int(run_no)
+        return("run: %i sub: %s" %(self.run_no,self.sub))
+    def removeBackground(self):
+        """ Performs a simple interpolation of data between peaks, and substracts it. Uses linear interpolation."""
+        def nan_helper(y):
+            """Helper to handle indices and logical indices of NaNs.
+
+            Input:
+                - y, 1d numpy array with possible NaNs
+            Output:
+                - nans, logical indices of NaNs
+                - index, a function, with signature indices= index(logical_indices),
+                  to convert logical indices of NaNs to 'equivalent' indices
+            Example:
+                #>>> # linear interpolation of NaNs
+                #>>> nans, x= nan_helper(y)
+                #>>> y[nans]= np.interp(x(nans), x(~nans), y[~nans])
+            """
+
+            return np.isnan(y), lambda z: z.nonzero()[0]
+
+        sub = self.sub
+        run_no = self.run_no
+        data = self.data.copy()
+
+        x = data.loc[:, "Angle"]
+        y = data.loc[:, "PSD"]
+
+        #y = y.rolling(window=10).min()
+        #y = y.rolling(window=10).max()
+        data.loc[:,"y_mean"] = y.rolling(window=100).mean()
+        data.loc[:,'y_back'] = data.loc[:, "y_mean"]
+
+        if sub == "C":
+            x_sections = [[20, 29], [39.5, 40], [45, 54], [60, 70], [75, 80]]
+        if sub == "R":
+            x_sections = [[20, 29], [29, 30], [39, 49], [61, 70], [75, 80]]
+
+        if sub == "A":
+            x_sections = []
+
+        if sub == "M":
+            x_sections = []
+
+        ##### Find the background intensity to get the magnitude of the peaks ###################
+        try:
+            no_peaks = ((x > x_sections[0][0]) & (x < x_sections[0][1])) | \
+                       ((x > x_sections[1][0]) & (x < x_sections[1][1])) | \
+                       ((x > x_sections[2][0]) & (x < x_sections[2][1])) | \
+                       ((x > x_sections[3][0]) & (x < x_sections[3][1])) | \
+                       ((x > x_sections[4][0]) & (x < x_sections[4][1]))
+        except:
+            no_peaks = True
+            print("no peaks")
+
+        # deselect ranges without peaks to get the background
+        data["y_back"][~no_peaks] = np.nan
+
+        back_ = data.loc[:, "y_back"].copy()
+        yy_mean = back_.rolling(window=5).mean()
+
+        nans, xx = nan_helper(yy_mean)
+        yy_mean[nans] = np.interp(xx(nans), xx(~nans), yy_mean[~nans])
+        ###this line assigns interpolated values to the nans in the background column in the dataframe,
+        ###not only to yy
+
+
+        background = interp1d(x, yy_mean)
+        self.data["background"] = background.y
+        self.data["y-b.g."] = self.data.loc[:,"PSD"]-background.y
+
+        return background
+    def extract_peak(self):
+        """ Extract the peaks according to locations set in exp_ang. The tolerance, tol_o, need to be adjusted to account for
+        poor background treatment (there might be some gradients, so if the range is too wide for the small peaks, the maximum will
+        reflect the highest point on a bigger slope.)"""
+
+        exp_ang = {"100": 31.77, "002": 34.422, "101": 36.253, "110": 56.603}
+        #exp_ang = {"002": 34.422,"110": 56.603}
+        tol_o = {"100": 0.5, "002": 1, "101": 0.3, "110": 1}
+
+        for hkl in exp_ang.keys():
+
+            tol = tol_o[hkl]
+            theoretical_peak_position = exp_ang[hkl]
+
+
+            x = self.data.loc[:,"Angle"]
+            located_within_tol = abs( x - theoretical_peak_position) < tol
+            ###test 1 checks to see if the peak is near the theoretical peak
+            temp_peak = self.data[located_within_tol].copy()
+
+            peak_index = temp_peak.idxmax(axis=0)["y-b.g."]
+            measured_peak_location = temp_peak.loc[peak_index, "Angle"]
+
+            peak_within_tol = (abs(x - measured_peak_location) < tol)
+            self.data["peak"+hkl] = self.data.loc[:,"y-b.g."][peak_within_tol]
+    def fit_peak(self,hkl):
+        """ Model the peak of a given peak using a two voigt function. The functions have the same gamma and sigma, and the amplitude of
+        v2_ is half that of v1_. There is a shift between the two, but this is limited to some max value to avoid it from being too big.
+        The shift max is chosen through trial and error. """
+
+        max_shift = {"100": 0.0798, "002": 0.091, "101": 0.1158, "110": 0.175}
+        from lmfit.models import VoigtModel
+        mod1 = VoigtModel(prefix = "v1_")
+        mod2 = VoigtModel(prefix = "v2_")
+        mod =mod1+mod2
+        peak_column = "peak"+hkl
+
+        xy = self.data.loc[:,["Angle",peak_column]].dropna()
+        x = xy["Angle"]
+        x_labels = x.index
+        y = list(xy[peak_column])
+
+        pars = mod.make_params(verbose = False)
+        pars['v1_sigma'].set(min=0)
+        pars['v2_sigma'].set(expr="v1_sigma")
+        pars['v1_amplitude'].set(value=max(y)/2, min=0, max=max(y), vary=True, expr="")
+        pars['v2_amplitude'].set(value = max(y)/2,min=0, expr="v1_amplitude/2")
+
+        pars.add('shift', value=max_shift[hkl], min=max_shift[hkl]-0.01, max=max_shift[hkl]+0.01)
+        pars['v2_center'].set(expr="v1_center+shift")
+        pars['v2_gamma'].set(expr='v1_gamma')
+
+
+        out = mod.fit(y, pars, x=x)
+        self.out = out
+        comps = out.eval_components(x=x)
+
+        self.data.loc[x_labels,"v1_comp"+hkl] = comps["v1_"]
+        self.data.loc[x_labels,"v2_comp"+hkl] = comps["v2_"]
+        self.data.loc[x_labels,"fit"+hkl] = out.best_fit
+
+        fwhm,fwhm_error = re.findall("v1_fwhm:\s+(\S+)\s+\+/-\s+\S+\s+\((\S+)\%\)",out.fit_report())[0]
+        height,height_error = re.findall("v1_height:\s+(\S+)\s+\+/-\s+\S+\s+\((\S+)\%\)",out.fit_report())[0]
+        self.peak.loc[hkl,"fwhm"] = float(fwhm)
+        self.peak.loc[hkl,"fwhm_error"] = float(fwhm_error)
+        self.peak.loc[hkl,"height"] = float(height)
+        self.peak.loc[hkl,"height_error"] = float(height_error)
+    def fit_all_peaks(self,report_folder="../XRD_fit"):
+        run_no = self.run_no
+        sub  = self.sub
+        f, ax = plt.subplots(2,2)
+        f.suptitle(str(self.run_no) + self.sub)
+        ax_l = {"100": ax[0][0], "002": ax[0][1], "101": ax[1][0], "110": ax[1][1]}
+
+        for hkl in ["002","101","100","110"]:
+            self.fit_peak(hkl)
+
+            #################### plotting and recording results from fit ####################
+
+            ax = ax_l[hkl]
+            xy = self.data.loc[:,["Angle","peak"+hkl,"v1_comp"+hkl,"v2_comp"+hkl,"fit"+hkl]].dropna()
+
+            x = xy.loc[:,"Angle"]
+            raw = xy.loc[:,"peak"+hkl]
+            v1 = xy.loc[:,"v1_comp"+hkl]
+            v2 = xy.loc[:,"v2_comp"+hkl]
+            fit = xy.loc[:,"fit"+hkl]
+
+            ax.plot(x, raw)
+            #ax.plot(x, init, 'k--')
+
+            ax.plot(x, fit, 'r-')
+            ax.plot(x, v1, 'b--')
+            ax.plot(x, v2, 'g--')
+
+            ax.annotate(hkl, xy=(0.2, 0.8), xycoords='axes fraction', fontsize=16,
+                        horizontalalignment='right', verticalalignment='bottom')
+
+            max_y = max(raw)
+
+            ax.set_ylim(0, max_y * 1.1)
+
+        f.savefig(report_folder+"/XRD_fit_%s%s.png" % (self.run_no, self.sub), dpi=300)
+        plt.close(f)
+    def __init__(self,filename):
+        self.filename = filename
+        self.data = self.readXRDfile(filename)
+        self.runFromName()
+        #self.removeBackground()
+        self.extract_peak()
+        self.peak = pd.DataFrame(index = ["100","101","002","110"])
+
+
 
 def collectXRDfolder(folder):
     """ Read all XRD files in folder and return a list of dictionaries.
         XRD_data = get_XRD(folder_with_XRD_files)
     """
     files_in_folder = os.listdir(folder)
-    files_to_read = []
-    for filename in files_in_folder:
-        if re.search(".txt", filename) and re.search("\d\d\d",filename):
-            files_to_read.append(filename)
-
-    list_keys = sorted(files_to_read)
+    files_to_read = [x for x in files_in_folder if (re.search(".txt", x) and re.search("\d\d\d",x))]
 
     XRD_data = []
-
     for inputfile in files_to_read:
             if len(inputfile)<1:
                 continue
-            try:
-                sample,sub = re.findall("(\d\d\d)([rRCcaAmM])", inputfile)
 
-            except:
-                sample,sub = re.findall("(\d\d\d)[-_]\S*([rRCcaAmM])-",inputfile)[0]
-
-            sub = sub.upper()
-            data = readXRDfile(folder+"/"+inputfile)
-
+            xsample = xrdSample(folder+"/"+inputfile)
             new_sample = {'filename': inputfile,
-                          'run_no': sample,
-                          "sub": sub,
-                          "data": data}
+                          'run_no': xsample.run_no,
+                          "sub": xsample.sub,
+                          "data": xsample}
 
             XRD_data.append(new_sample)
     return XRD_data
 
-def get_x(dataset):
-    return dataset["data"].loc[:,"Angle"]
-def get_y(dataset):
-    return dataset["data"].loc[:,"PSD"]
-
-def background(dataset):
-    data = dataset["data"].copy()
-    x = data.loc[:, "Angle"]
-    y = data.loc[:, "PSD"]
-
-    #y = y.rolling(window=10).min()
-    #y = y.rolling(window=10).max()
-    data.loc[:,"y_mean"] = y.rolling(window=5).mean()
-    data.loc[:,'y_back'] = data.loc[:, "y_mean"]
-
-    if dataset["sub"] == "C":
-        x_sections = [[20, 29], [39.5, 40], [45, 54], [60, 70], [75, 80]]
-    if dataset["sub"] == "R":
-        x_sections = [[20, 29], [29, 30], [39, 49], [61, 70], [75, 80]]
-
-    if dataset["sub"] == "A":
-        x_sections = []
-
-    if dataset["sub"] == "M":
-        x_sections = []
-
-    ##### Find the background intensity to get the magnitude of the peaks ###################
-    try:
-        no_peaks = ((x > x_sections[0][0]) & (x < x_sections[0][1])) | \
-                   ((x > x_sections[1][0]) & (x < x_sections[1][1])) | \
-                   ((x > x_sections[2][0]) & (x < x_sections[2][1])) | \
-                   ((x > x_sections[3][0]) & (x < x_sections[3][1])) | \
-                   ((x > x_sections[4][0]) & (x < x_sections[4][1]))
-    except:
-        no_peaks = True
-        print("no peaks")
-
-    # deselect ranges without peaks to get the background
-    data["y_back"][~no_peaks] = np.nan
-
-    back_ = data.loc[:, "y_back"].copy()
-    yy_mean = back_.rolling(window=5).mean()
-
-    nans, xx = nan_helper(yy_mean)
-    yy_mean[nans] = np.interp(xx(nans), xx(~nans), yy_mean[~nans])
-    ###this line assigns interpolated values to the nans in the background column in the dataframe,
-    ###not only to yy
-
-
-    background = interp1d(x, yy_mean)
-
-    return background
-
-def extract_peak(dataset, hkl, tol=0.5):
-    """ Extract the x,y of peak hkl in dataframe data
-     returns x,y as arrays"""
-    exp_ang = {"100": 31.77, "002": 34.422, "101": 36.253, "110": 56.603}
-    tol_o = {"100": 0.3, "002": 0.3, "101": 0.4, "110": 0.6}
-    tol = tol_o[hkl]
-    theoretical_peak_position = exp_ang[hkl]
-
-    data = dataset["data"].copy()
-    x = data.loc[:,"Angle"]
-    test = (abs( x - theoretical_peak_position) < tol)
-    ###test 1 checks to see if the peak is near the theoretical peak
-    temp_peak = data[test]
-
-    peak_index = temp_peak.idxmax(axis=0)["PSD"]
-    measured_peak_location = temp_peak.loc[peak_index, "Angle"]
-
-    test2 = (abs(x - measured_peak_location) < tol)
-    ### Test2 selects a symmetric portion about the peak.
-    temp_peak = data[test2]
-    xx = temp_peak.loc[:,"Angle"]
-    temp_peak.loc[:,"PSD"] = temp_peak.loc[:,"PSD"] - background(dataset)(xx)
-
-    ################ Fit peak to voigt model and obtain fwhm from fit ########################
-    #peaks_without_nan = temp_peak.loc[:,"Angle"].dropna()
-    #x2 = np.array(peaks_without_nan["Angle"])
-    #y2 = np.array(peaks_without_nan[hkl])
-    x2 = np.array(temp_peak.loc[:,"Angle"])
-    y2 = np.array(temp_peak.loc[:,"PSD"])
-    return x2,y2
-
-def peakfit(x2,y2,min_ang="none"):
-    from lmfit.models import VoigtModel
-    if min_ang =="none":
-        min_ang = min(x2)
-    max_y = max(y2/2)
-
-    ####Setup model and variables
-    voigt1 = VoigtModel(prefix='v1_')
-    voigt2 = VoigtModel(prefix='v2_')
-
-    mod = voigt1 + voigt2
-
-    pars = mod.make_params()
-
-    pars['v1_center'].set(min=min_ang)
-    pars['v1_sigma'].set(value=0.1, min = 0, vary=True)
-    pars['v1_amplitude'].set(value=max_y / 3, min = 0, vary=True, expr="")
-    pars['v1_gamma'].set(value=0.1, vary=True, min = 0, expr='')  # to separate sigma and gamma in voigt model
-
-    pars.add('shift', value=0.1, min=0.05, max=0.2)
-
-    pars['v2_center'].set(min=min_ang + 0.1, expr="v1_center+shift")
-    pars['v2_sigma'].set(expr="v1_sigma")
-    pars['v2_amplitude'].set(value=max_y / 6, expr="v1_amplitude/2")
-    pars['v2_gamma'].set(expr='v1_gamma')
-
-    mod = voigt1 + voigt2
-
-
-    ##### generate output #####
-
-    out = mod.fit(y2, pars, x=x2)
-    return out
-def fit_peaks(XRD_data, XRD_folder = report_folder):
-    """ Make fits for the expected peaks in the XRD spectra. Stores the results in image files and
-        text files. The text files can be added to the XRD_data list by using some other function.
-
-        PeakFile will read a single file and generate a single pandas dataframe
-        peakFolder will read all the files in a folder and generate a list of dataframes
-        append_peaks_data will append the peak data to samples_data list
-    """
-
-    report_folder = XRD_folder + "/XRD_fit"
-
-    if not os.path.exists(report_folder):
-        os.makedirs(report_folder)
-
-    for dataset in XRD_data:
-        # if dataset["sub"]=="R" and dataset["run_no"] in sample_list:
-        data = dataset["data"]
-        x = data.loc[:, "Angle"]
-
-        run_no = dataset["run_no"]
-        sub = dataset["sub"]
-        ###Other data in list entries
-
-##### Select the peaks based on the expected angles (list at top of cell)
-        temp_peaks = pd.DataFrame(x, columns=["Angle"])
-
-########## SETUP PLOT AND MAKE REPORT FILES #######################################
-        f, ax = plt.subplots(2,2)
-        f.suptitle(run_no + sub)
-        ax_l = {"100": ax[0][0], "002": ax[0][1], "101": ax[1][0], "110": ax[1][1]}
-        rep_fh = open(report_folder+"/XRD_fit_report_%s%s.txt" % (run_no, sub), "w")
-
-        for i, hkl in enumerate(exp_ang):
-            # if hkl == "002":
-            x2,y2 = extract_peak(dataset,hkl)
-
-            #################### Modelling of peak ##########################################
-            min_ang = exp_ang[hkl]
-            max_y = max(y2/2)
-
-            ####Setup model and variables
-            voigt1 = VoigtModel(prefix='v1_')
-            voigt2 = VoigtModel(prefix='v2_')
-
-            pars = voigt1.guess(y2, x=x2)
-            pars.update(voigt2.guess(y2, x=x2))
-
-            pars['v1_center'].set(min=min_ang)
-            pars['v1_sigma'].set(value=0.1, min = 0, vary=True)
-            pars['v1_amplitude'].set(value=max_y / 3, min = 0, vary=True, expr="")
-            pars['v1_gamma'].set(value=0.1, vary=True, min = 0, expr='')  # to separate sigma and gamma in voigt model
-
-            pars.add('shift', value=0.1, min=0.05, max=0.2)
-
-            pars['v2_center'].set(min=min_ang + 0.1, expr="v1_center+shift")
-            pars['v2_sigma'].set(expr="v1_sigma")
-            pars['v2_amplitude'].set(value=max_y / 6, expr="v1_amplitude/2")
-            pars['v2_gamma'].set(expr='v1_gamma')
-
-            mod = voigt1 + voigt2
-
-
-            ##### generate output #####
-            try:
-                out = mod.fit(y2, pars, x=x2)
-
-                ##### generate data for plots #####
-                comps = out.eval_components(x=x2)
-                init = mod.eval(pars, x=x2)
-
-                #################### plotting and recording results from fit ####################
-
-                ax = ax_l[hkl]
-                ax.plot(x2, y2)
-                ax.plot(x2, init, 'k--')
-                ax.plot(x2, out.best_fit, 'r-')
-                ax.plot(x2, comps['v1_'], 'b--')
-                ax.plot(x2, comps['v2_'], 'g--')
-
-                ax.annotate(hkl, xy=(0.2, 0.8), xycoords='axes fraction', fontsize=16,
-                            horizontalalignment='right', verticalalignment='bottom')
-
-                max_y = max(y2)
-
-                ax.set_ylim(0, max_y * 1.1)
-                rep_fh.write("Peak: " + hkl + "\n")
-                rep_fh.write("Max peak intensity: %f \n" %max(comps['v1_']))
-                rep_fh.write(out.fit_report(min_correl=0.25))
-            except:
-                rep_fh.write("Peak-error: " + hkl + "\n")
-                print(run_no + sub, hkl, ": fit error")
-                ax.plot(x2, y2)
-
-        rep_fh.close()
-        f.savefig(report_folder+"/XRD_fit_%s%s.png" % (run_no, sub), dpi=300)
-        plt.close(f)
-
-def single_fit_pvoigt(dataset, hkl, plot_figure=False):
-    """
-    fit using a single model, return out,comps,init, and list of parameters
-    """
-
-    max_shift = {"100": 0.0798, "002": 0.091, "101": 0.1158, "110": 0.175}
-
-    from lmfit.models import PseudoVoigtModel
-    model = PseudoVoigtModel
-    ############# GET COORDINATES #################
-    x, y = extract_peak(dataset, hkl)
-
-    mod1 = model(prefix='v1_')
-    mod2 = model(prefix='v2_')
-
-    pars = mod1.guess(y, x=x)
-    pars.update(mod2.guess(y, x=x))
-    # pars['v1_center'].set( min=34.4, max=35)
-    pars['v1_sigma'].set(min=0)
-    pars['v1_amplitude'].set(value=max(y)/2, min=0, max=max(y), vary=True, expr="")
-    pars['v1_fraction'].set(min=0, max=1)
-
-    pars.add('shift', value=max_shift[hkl], min=max_shift[hkl]-0.01, max=max_shift[hkl]+0.01)
-
-    pars['v2_center'].set(expr="v1_center+shift")
-    pars['v2_sigma'].set(expr="v1_sigma")
-    pars['v2_amplitude'].set(value = max(y)/2,min=0, expr="v1_amplitude/2")
-    pars['v2_fraction'].set(min =0,max=1,expr='v1_fraction')
-
-    mod = mod1 + mod2
-
-    init = mod.eval(pars, x=x)
-    out = mod.fit(y, pars, x=x)
-    comps = out.eval_components(x=x)
-    peak_height = max(comps['v1_'])
-    par_list = out.best_values
-    par_list.update({"v1_height": peak_height, "v2_height": max(comps['v2_'])})
-
-    if plot_figure:
-        plt.plot(x, y)
-        plt.plot(x, init, 'k--')
-
-        out = mod.fit(y, pars, x=x)
-
-        comps = out.eval_components(x=x)
-
-        print(out.fit_report())
-        plt.yscale("log")
-        plt.plot(x, out.best_fit, 'r-')
-        plt.plot(x, comps['v1_'], 'b--')
-        plt.plot(x, comps['v2_'], 'g--')
-        plt.show()
-        print(max(comps['v1_']))
-
-    return out, comps, init, par_list
 
 def get_rockfolder(folder):
     files_in_folder = os.listdir(folder)
@@ -772,7 +684,7 @@ def fit_peaks_lor(XRD_data, XRD_folder=report_folder):
         f.savefig(report_folder + "/XRD_fit_lor_%s%s.png" % (run_no, sub), dpi=300)
         plt.close(f)
 
-def fit_xrd_folder(xrd_folder, XRD_data, noise = 15):
+def fit_xrd_folder(xrd_folder, XRD_data, noise = 1e-2):
     """
 
     :param xrd_folder: folder with XRD data
