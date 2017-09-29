@@ -22,25 +22,12 @@ sample_list = ["709"]
 
 ##################### XRD FUNCTIONS #########################
 """dataset is an element in the list of dictionaries returned by collectXRDfolder"""
-def nan_helper(y):
-    """Helper to handle indices and logical indices of NaNs.
 
-    Input:
-        - y, 1d numpy array with possible NaNs
-    Output:
-        - nans, logical indices of NaNs
-        - index, a function, with signature indices= index(logical_indices),
-          to convert logical indices of NaNs to 'equivalent' indices
-    Example:
-        #>>> # linear interpolation of NaNs
-        #>>> nans, x= nan_helper(y)
-        #>>> y[nans]= np.interp(x(nans), x(~nans), y[~nans])
-    """
-
-    return np.isnan(y), lambda z: z.nonzero()[0]
 
 class xrdSample:
-
+    no_peaks = False
+    c = 0
+    a = 0
     def readXRDfile(self,filename):
         """ Read the Angles and intensities off the file. Assume that the intensity of the AL2O3 peak is constant for all samples because
         the films are thin. Then we can normalise the intensities."""
@@ -56,29 +43,28 @@ class xrdSample:
         try:
             run_no,sub = re.findall("(\d\d\d)([rRCcaAmM])", self.filename)
         except:
-            run_no,sub = re.findall("(\d\d\d)[-_]\S*([rRCcaAmM])-",self.filename)[0]
+            run_no,sub = re.findall("(\d\d\d)[-_]Z\S*([rRCcaAmM])-",self.filename)[0]
         self.sub = sub.upper()
         self.run_no = int(run_no)
         return("run: %i sub: %s" %(self.run_no,self.sub))
+    def nan_helper(self,y):
+        """Helper to handle indices and logical indices of NaNs.
+
+        Input:
+            - y, 1d numpy array with possible NaNs
+        Output:
+            - nans, logical indices of NaNs
+            - index, a function, with signature indices= index(logical_indices),
+              to convert logical indices of NaNs to 'equivalent' indices
+        Example:
+            #>>> # linear interpolation of NaNs
+            #>>> nans, x= nan_helper(y)
+            #>>> y[nans]= np.interp(x(nans), x(~nans), y[~nans])
+        """
+
+        return np.isnan(y), lambda z: z.nonzero()[0]
     def removeBackground(self):
         """ Performs a simple interpolation of data between peaks, and substracts it. Uses linear interpolation."""
-        def nan_helper(y):
-            """Helper to handle indices and logical indices of NaNs.
-
-            Input:
-                - y, 1d numpy array with possible NaNs
-            Output:
-                - nans, logical indices of NaNs
-                - index, a function, with signature indices= index(logical_indices),
-                  to convert logical indices of NaNs to 'equivalent' indices
-            Example:
-                #>>> # linear interpolation of NaNs
-                #>>> nans, x= nan_helper(y)
-                #>>> y[nans]= np.interp(x(nans), x(~nans), y[~nans])
-            """
-
-            return np.isnan(y), lambda z: z.nonzero()[0]
-
         sub = self.sub
         run_no = self.run_no
         data = self.data.copy()
@@ -109,35 +95,47 @@ class xrdSample:
                        ((x > x_sections[2][0]) & (x < x_sections[2][1])) | \
                        ((x > x_sections[3][0]) & (x < x_sections[3][1])) | \
                        ((x > x_sections[4][0]) & (x < x_sections[4][1]))
+
+
+            # deselect ranges without peaks to get the background
+            data["y_back"][~no_peaks] = np.nan
+
+            back_ = data.loc[:, "y_back"].copy()
+            yy_mean = back_.rolling(window=5).mean()
+
+            nans, xx = self.nan_helper(yy_mean)
+            yy_mean[nans] = np.interp(xx(nans), xx(~nans), yy_mean[~nans])
+            ###this line assigns interpolated values to the nans in the background column in the dataframe,
+            ###not only to yy
+
+
+            background = interp1d(x, yy_mean)
+            self.data["background"] = background.y
+            self.data["y-b.g."] = self.data.loc[:,"PSD"]-background.y
         except:
-            no_peaks = True
-            print("no peaks")
-
-        # deselect ranges without peaks to get the background
-        data["y_back"][~no_peaks] = np.nan
-
-        back_ = data.loc[:, "y_back"].copy()
-        yy_mean = back_.rolling(window=5).mean()
-
-        nans, xx = nan_helper(yy_mean)
-        yy_mean[nans] = np.interp(xx(nans), xx(~nans), yy_mean[~nans])
-        ###this line assigns interpolated values to the nans in the background column in the dataframe,
-        ###not only to yy
-
-
-        background = interp1d(x, yy_mean)
-        self.data["background"] = background.y
-        self.data["y-b.g."] = self.data.loc[:,"PSD"]-background.y
-
-        return background
-    def extract_peak(self):
+            self.no_peaks = True
+            print(self.filename+": not able to remove background. See removeBackground.")
+            self.data["background"] = np.nan
+            self.data["y-b.g."] = np.nan
+    def extract_peak(self,**kwargs):
         """ Extract the peaks according to locations set in exp_ang. The tolerance, tol_o, need to be adjusted to account for
         poor background treatment (there might be some gradients, so if the range is too wide for the small peaks, the maximum will
         reflect the highest point on a bigger slope.)"""
 
         exp_ang = {"100": 31.77, "002": 34.422, "101": 36.253, "110": 56.603}
         #exp_ang = {"002": 34.422,"110": 56.603}
-        tol_o = {"100": 0.5, "002": 1, "101": 0.3, "110": 1}
+        tol_o = {"100": 0.3, "002": 0.3, "101": 0.2, "110": 0.8}
+
+        if len(kwargs.keys())>0:
+
+            for key in kwargs.keys():
+
+                hkl = re.findall("\d\d\d",key)[0]
+                value = kwargs[key]
+                print(hkl,value)
+
+                tol_o.update({hkl:value})
+
 
         for hkl in exp_ang.keys():
 
@@ -154,8 +152,9 @@ class xrdSample:
             measured_peak_location = temp_peak.loc[peak_index, "Angle"]
 
             peak_within_tol = (abs(x - measured_peak_location) < tol)
+            self.data["peak"+hkl] = np.nan
             self.data["peak"+hkl] = self.data.loc[:,"y-b.g."][peak_within_tol]
-    def fit_peak(self,hkl):
+    def fit_peak(self,hkl,keep_out = False):
         """ Model the peak of a given peak using a two voigt function. The functions have the same gamma and sigma, and the amplitude of
         v2_ is half that of v1_. There is a shift between the two, but this is limited to some max value to avoid it from being too big.
         The shift max is chosen through trial and error. """
@@ -184,7 +183,8 @@ class xrdSample:
 
 
         out = mod.fit(y, pars, x=x)
-        self.out = out
+        if keep_out:
+            self.out.update({hkl:out})
         comps = out.eval_components(x=x)
 
         self.data.loc[x_labels,"v1_comp"+hkl] = comps["v1_"]
@@ -192,12 +192,117 @@ class xrdSample:
         self.data.loc[x_labels,"fit"+hkl] = out.best_fit
 
         fwhm,fwhm_error = re.findall("v1_fwhm:\s+(\S+)\s+\+/-\s+\S+\s+\((\S+)\%\)",out.fit_report())[0]
-        height,height_error = re.findall("v1_height:\s+(\S+)\s+\+/-\s+\S+\s+\((\S+)\%\)",out.fit_report())[0]
+        fheight,fheight_error = re.findall("v1_height:\s+(\S+)\s+\+/-\s+\S+\s+\((\S+)\%\)",out.fit_report())[0]
+        height = max(comps["v1_"])
+
+
+
+        if re.search("v1_center:\s+(\S+)\s+\+/-\s+\S+\s+\((\S+)\%\)",out.fit_report()):
+            peak_location,peak_location_error = re.findall("v1_center:\s+(\S+)\s+\+/-\s+\S+\s+\((\S+)\%\)",out.fit_report())[0]
+
+        redchisqr = out.redchi
         self.peak.loc[hkl,"fwhm"] = float(fwhm)
         self.peak.loc[hkl,"fwhm_error"] = float(fwhm_error)
+        self.peak.loc[hkl,"fheight"] = float(fheight)
+        self.peak.loc[hkl,"fheight_error"] = float(fheight_error)
         self.peak.loc[hkl,"height"] = float(height)
-        self.peak.loc[hkl,"height_error"] = float(height_error)
-    def fit_all_peaks(self,report_folder="../XRD_fit"):
+
+
+        self.peak.loc[hkl,"peak"] = float(peak_location)
+        self.peak.loc[hkl,"peak_error"] = float(peak_location_error)
+        self.peak.loc[hkl,"redchisqr"] = float(redchisqr)
+    ########## Calculated parameters  ########################################
+    def peak_params(self):
+        """ calculates peak parameters: a, c, d, grain sizes, and errors based on fwhm. inserts values into
+        peak_df. Must be used after peaks are modelled."""
+        peak_df = self.peak
+
+        def get_a(d, hkl, c = 5.207):
+            if len(hkl)==3:
+                h = float(hkl[0])
+                k = float(hkl[1])
+                l = float(hkl[2])
+            else:
+                print("ERROR: hkl too long: "+hkl)
+            a2_inv = (1 / d ** 2 - l ** 2 / c ** 2) / (4.0 / 3.0 * (h ** 2 + k ** 2 + h * k))
+            if a2_inv < 0:
+                print(h, k, l, "smaller than zero")
+            return 1 / math.sqrt(a2_inv)
+        def get_c(d, hkl, a = 3.252):
+            if len(hkl)==3:
+                h = float(hkl[0])
+                k = float(hkl[1])
+                l = float(hkl[2])
+            else:
+                print("ERROR: hkl too long: "+hkl)
+
+            c2_inv = 1 / (l ** 2) * (1 / d ** 2 - ((h ** 2 + k ** 2 + h * k) / a ** 2) * 4.0 / 3.0)
+
+            return 1 / math.sqrt(c2_inv)
+        def calc_d(two_theta):
+            return alpha1 / (2 * math.sin(two_theta * math.pi / 360))
+        def lattice_error(two_theta,fwhm):
+                """Returns the relative error based on fwhm"""
+                return fwhm/2.3548 * math.cos(two_theta/360 * math.pi)/two_theta*2  #fwhm/(2*sqrt(2ln2))
+        def scherrer(fwhm,peak_position):
+
+                k = 0.9
+                wl = alpha1
+                B = fwhm/180*math.pi #must be units radian
+                p = peak_position/360 * math.pi #half of 2-theta
+                D = k * wl /(B* math.cos(p))
+                #### Holzwarth2011
+                return D
+
+            ################# Calculate d, a, c, and grain size for each peak ###########################
+        for hkl in peak_df.index:
+            fwhm = peak_df.loc[hkl,"fwhm"]
+            fwhm_error = peak_df.loc[hkl,"fwhm_error"]
+            peak_loc = peak_df.loc[hkl, "peak"]
+
+            d = calc_d(peak_loc)
+            peak_df.loc[hkl,"d"]=d
+
+            peak_error = lattice_error(peak_loc,fwhm)
+
+            peak_df.loc[hkl,"peak_error"] = peak_error*peak_loc
+
+                        ###### Get the a and c parameters #####
+            if hkl == "110":
+                peak_df.loc[hkl,"a"] = get_a(d,hkl)
+                self.a = get_a(d,hkl)
+                peak_df.loc[hkl,"a_error"] = peak_df.loc[hkl,"a"]*lattice_error(peak_loc,fwhm)
+            if hkl == "002":
+                peak_df.loc[hkl,"c"] = get_c(d, hkl)
+                self.c = get_c(d,hkl)
+                peak_df.loc[hkl,"c_error"] = peak_df.loc[hkl,"c"]*lattice_error(peak_loc,fwhm)
+
+            if hkl == "100":
+                peak_df.loc[hkl,"a"] =  get_a(d, hkl)
+                peak_df.loc[hkl,"a_error"] = peak_df.loc[hkl,"a"]*lattice_error(peak_loc,fwhm)
+            if hkl == "101":
+                if "002" in peak_df.index:
+                    dummy_c = get_c(d,"002")
+                    peak_df.loc[hkl,"a"] = get_a(d,hkl,c=dummy_c)
+                    peak_df.loc[hkl,"a_error"] = peak_df.loc[hkl,"a"]*lattice_error(peak_loc,fwhm)
+                    dummy_a = get_a(d,"110")
+                    peak_df.loc[hkl,"c"] = get_c(d,hkl,a=dummy_a)
+                    peak_df.loc[hkl,"c_error"] = peak_df.loc[hkl,"c"]*lattice_error(peak_loc,fwhm)
+
+
+            peak_df.loc[hkl,"grain"] = scherrer(fwhm,peak_loc)
+            peak_df.loc[hkl,"grain_error"] =fwhm_error/100*scherrer(fwhm,peak_loc)
+            ###### calculate u and b for sample #######
+    def calc_u(self):
+        a = self.a
+        c = self.c
+        self.u =  1/3*(a**2/c**2)+1/4
+    def calc_b(self):
+        u = self.u
+        c = self.c
+        self.b = c*u
+
+    def fit_all_peaks(self,report_folder=""):
         run_no = self.run_no
         sub  = self.sub
         f, ax = plt.subplots(2,2)
@@ -205,8 +310,10 @@ class xrdSample:
         ax_l = {"100": ax[0][0], "002": ax[0][1], "101": ax[1][0], "110": ax[1][1]}
 
         for hkl in ["002","101","100","110"]:
-            self.fit_peak(hkl)
-
+            try:
+                self.fit_peak(hkl)
+            except:
+                print(run_no,sub,hkl)
             #################### plotting and recording results from fit ####################
 
             ax = ax_l[hkl]
@@ -232,15 +339,26 @@ class xrdSample:
 
             ax.set_ylim(0, max_y * 1.1)
 
-        f.savefig(report_folder+"/XRD_fit_%s%s.png" % (self.run_no, self.sub), dpi=300)
+        if report_folder == "":
+            f.show()
+        else:
+            f.savefig(report_folder+"/XRD_fit_%s%s.png" % (self.run_no, self.sub), dpi=300)
         plt.close(f)
+        self.peak_params()
+        self.calc_u()
+        self.calc_b()
+
+
     def __init__(self,filename):
         self.filename = filename
         self.data = self.readXRDfile(filename)
         self.runFromName()
-        #self.removeBackground()
-        self.extract_peak()
-        self.peak = pd.DataFrame(index = ["100","101","002","110"])
+        self.removeBackground()
+        if not self.no_peaks:
+            self.extract_peak()
+            self.peak = pd.DataFrame(index = ["100","101","002","110"])
+            self.out = {}
+
 
 
 
@@ -248,6 +366,7 @@ def collectXRDfolder(folder):
     """ Read all XRD files in folder and return a list of dictionaries.
         XRD_data = get_XRD(folder_with_XRD_files)
     """
+
     files_in_folder = os.listdir(folder)
     files_to_read = [x for x in files_in_folder if (re.search(".txt", x) and re.search("\d\d\d",x))]
 
@@ -255,16 +374,17 @@ def collectXRDfolder(folder):
     for inputfile in files_to_read:
             if len(inputfile)<1:
                 continue
+            try:
+                xsample = xrdSample(folder+"/"+inputfile)
+                new_sample = {'filename': inputfile,
+                              'run_no': xsample.run_no,
+                              "sub": xsample.sub,
+                              "data": xsample}
 
-            xsample = xrdSample(folder+"/"+inputfile)
-            new_sample = {'filename': inputfile,
-                          'run_no': xsample.run_no,
-                          "sub": xsample.sub,
-                          "data": xsample}
-
-            XRD_data.append(new_sample)
+                XRD_data.append(new_sample)
+            except:
+                print(inputfile)
     return XRD_data
-
 
 def get_rockfolder(folder):
     files_in_folder = os.listdir(folder)
@@ -740,202 +860,3 @@ def fit_xrd_folder(xrd_folder, XRD_data, noise = 1e-2):
                     rep_fh.write("\n")
         f.savefig(report_folder + "XRD_%s%s.png" % (run_no, sub), dpi=300)
         plt.close()
-
-def peakFile(filename):
-    peak_df = pd.DataFrame(index=["100", "002", "101", "110"])
-
-    def calc_d(theta):
-        return alpha1 / (2 * math.sin(theta * math.pi / 360))
-
-    with open(filename) as fin:
-
-        content = fin.read()
-        peaks = re.findall("Peak:\s*(\d+)\s*\n\s*v2_", content)
-        angles = re.findall("v1_center:\s+(\d+\.\d+)", content)
-        amplitudes = re.findall("v1_amplitude:\s+(\-?\d+\.\d+)", content)
-        sigmas = re.findall("v1_sigma:\s+(\-?\d+\.\d+)", content)
-        gammas = re.findall("v1_gamma:\s+(\-?\d+\.\d+)", content)
-        shifts = re.findall("shift:\s+(\d+\.\d+)", content)
-        heights = re.findall("v1_height:\s+(\d+\.\d+)", content)
-        print(re.findall("\d\d\d[aAmMrRcC]", filename),peaks)
-        ### height is taken from max(comp["v1_"])
-        for i, hkl in enumerate(peaks):
-            angle,gamma, sigma, amplitude = None, None, None, None
-            shift = None
-            fwhm_g,fwhm_l,fwhm_v = None,None,None
-            angle = float(angles[i])
-            amplitude = float(amplitudes[i])
-
-
-            try:
-                sigma = float(sigmas[i])
-                fwhm_g = 2 * sigma
-            except:
-                print("no sigma "+hkl)
-
-            try:
-                gamma = float(gammas[i])
-                peak_df.loc[hkl, "gamma"] = gamma
-                fwhm_l = 2 * gamma
-            except:
-                print("no gamma "+hkl)
-
-            try:
-                shift = float(shifts[i])
-                peak_df.loc[hkl, "shift"] = shift
-            except: print("no shift "+hkl)
-
-            try:
-                height = heights[i]
-                peak_df.loc[hkl, "peak_int"] = height
-            except:
-                print("no height "+hkl)
-
-            try:
-                fwhm_v = 0.5346*fwhm_l+math.sqrt(0.2166*fwhm_l**2+fwhm_g**2)
-                peak_df.loc[hkl, "fwhm"] = fwhm_v
-            except:
-                fwhm_v  = 2 * sigma
-                peak_df.loc[hkl, "fwhm"] = fwhm_v
-
-            d = calc_d(angle)
-
-            peak_df.loc[hkl, "Peak"] = angle
-            peak_df.loc[hkl, "d"] = d
-            peak_df.loc[hkl, "Amplitude"] = amplitude
-            peak_df.loc[hkl, "sigma"] = sigma
-    return peak_df
-
-def folder_to_peakdata(folder,pars_or_report="pars"):
-    """ Collect all fitted data in folder into one dictionary {"run_no":, "sub":, "data":} """
-
-    files_in_folder = os.listdir(folder)
-    files_to_list = []
-    for filename in files_in_folder:
-        if re.search("%s\S+.txt" %pars_or_report, filename):
-            files_to_list.append(filename)
-
-    sample_dicts = []
-    for filename in files_to_list:
-
-        sample, sub = re.findall("(\d\d\d)([MmAaCcRr])", filename)[0]
-        sample_dicts.append({"run_no": sample, "sub": sub, "peaks": peakFile(folder+filename)})
-
-    return sample_dicts
-
-def remove_small_peaks(peak_df, limit):
-    """Remove peaks that are smaller than the limit"""
-    new_df = peak_df.copy()
-    for col, row in new_df.iterrows():
-        if row["mag"] < limit:
-            new_df.loc[col, "mag"] = np.nan
-    return new_df.dropna()
-
-def get_a(d, h, k, l, c):
-    a2_inv = (1 / d ** 2 - l ** 2 / c ** 2) / (4.0 / 3.0 * (h ** 2 + k ** 2 + h * k))
-    if a2_inv < 0:
-        print(h, k, l, "smaller than zero")
-    return 1 / math.sqrt(a2_inv)
-
-def get_c(d, h, k, l, a):
-    c2_inv = 1 / (l ** 2) * (1 / d ** 2 - ((h ** 2 + k ** 2 + h * k) / a ** 2) * 4.0 / 3.0)
-    return 1 / math.sqrt(c2_inv)
-
-def lattice_params(dataset):
-    """ calculate lattice parameters and add to peak_df. dataset["data"] refers to peak dataframe"""
-    peak_df = dataset["peaks"]
-
-    ################# Calculate d, a and c ###########################
-
-    for hkl in ["002", "110", "100", "101"]:
-
-        if hkl in peak_df.index:
-            try:
-                d = peak_df.loc[hkl, "d"]
-            except:
-                print(dataset["run_no"])
-                print(peak_df)
-
-            if hkl == "110":
-                dummy_c = 5.2
-                dataset.update({"a": get_a(d,1,1,0,dummy_c)})
-
-            if hkl == "002":
-                dummy_a = 3.252
-                dataset.update({"c": get_c(d, 0, 0, 2, dummy_a)})
-
-            if hkl == "100":
-                dummy_c = 5.2
-                dataset.update({"a100": get_a(d, 1, 0, 0, dummy_c)})
-
-            if hkl == "101":
-                if "002" in peak_df.index:
-                    dummy_c = dataset["c"]
-                    dataset.update({"a101": get_a(d, 1, 0, 1, dummy_c)})
-
-                if "110" in peak_df.index:
-                    dummy_a = dataset["a"]
-                    dataset.update({"c101": get_c(d, 1, 0, 1, dummy_a)})
-
-def add_lattice_params(peak_data):
-    for sam in peak_data:
-        lattice_params(sam)
-def scherrer(fwhm,peak_position):
-
-    k = 0.9
-    wl = alpha1
-    B = fwhm/180*math.pi
-    p = peak_position/180 * math.pi
-    D = k * wl /(B* math.cos(p))
-    #### Holzwarth2011
-    return D
-
-def peaks_to_list(samples_data,peak_data):
-    """ Append all keys of peak_data to the corresponding sample in samples_data
-    Ensure peak_data = peakFolder(directory_of_fits)
-    Control that there are no duplicate keys
-    """
-    for p_dat in peak_data:
-        for sam_dat in samples_data:
-            if p_dat["run_no"] == sam_dat["run_no"] and p_dat["sub"] == sam_dat["sub"]:
-                for key in p_dat:
-                    if key == "peaks":
-                        if "peak_int" not in p_dat["peaks"].keys():
-                            print(p_dat["run_no"]+p_dat["sub"]," no peak_int")
-                            continue
-                        peak100 = p_dat["peaks"].loc["100","Peak"]
-                        peak101 = p_dat["peaks"].loc["101", "Peak"]
-                        peak002 = p_dat["peaks"].loc["002", "Peak"]
-                        peak110 = p_dat["peaks"].loc["110", "Peak"]
-
-                        mag100 = p_dat["peaks"].loc["100","peak_int"]
-                        mag101 = p_dat["peaks"].loc["101", "peak_int"]
-                        mag002 = p_dat["peaks"].loc["002", "peak_int"]
-                        mag110 = p_dat["peaks"].loc["110", "peak_int"]
-
-                        fwhm100 = p_dat["peaks"].loc["100", "fwhm"]
-                        fwhm101 = p_dat["peaks"].loc["101", "fwhm"]
-                        fwhm002 = p_dat["peaks"].loc["002", "fwhm"]
-                        fwhm110 = p_dat["peaks"].loc["110", "fwhm"]
-
-                        sam_dat.update({"mag100": mag100,
-                                        "mag101": mag101,
-                                        "mag002": mag002,
-                                        "mag110": mag110})
-
-                        sam_dat.update({"peak100": peak100,
-                                        "peak101": peak101,
-                                        "peak002": peak002,
-                                        "peak110": peak110})
-
-                        sam_dat.update({"fwhm100": fwhm100,
-                                        "fwhm101": fwhm101,
-                                        "fwhm002": fwhm002,
-                                        "fwhm110": fwhm110})
-
-                        sam_dat.update({"grain002": scherrer(fwhm002, peak002),
-                                        "grain110": scherrer(fwhm110, peak110)})
-
-
-                        continue
-                    sam_dat.update({key: p_dat[key]})

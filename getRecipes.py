@@ -211,7 +211,7 @@ def add_flows(a_list,runs):
     """
 
     for sample in a_list:
-        run_no = sample["run_no"]
+        run_no = str(sample["run_no"])
 
         if run_no is None:
             continue
