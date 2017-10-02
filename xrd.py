@@ -216,8 +216,9 @@ class xrdSample:
         if re.search("v1_center:\s+(\S+)\s+\+/-\s+\S+\s+\(\S+\%\)",out.fit_report()):
             peak_location,peak_location_error = re.findall("v1_center:\s+(\S+)\s+\+/-\s+(\S+)\s+\(\S+\%\)",out.fit_report())[0]
 
-        peak_correct = peak_location-self.exp_ang[hkl] < 1
-        if unable_to_fit or not peak_corect:
+        peak_correct = abs(float(peak_location) - self.exp_ang[hkl]) < 1
+
+        if unable_to_fit or not peak_correct:
 
             fwhm,fwhm_error,fheight,fheight_error,height = [np.nan]*5
             redchisqr = np.inf
@@ -264,8 +265,13 @@ class xrdSample:
             return 1 / math.sqrt(c2_inv)
         def calc_d(two_theta):
             return alpha1 / (2 * math.sin(two_theta * math.pi / 360))
-        def lattice_error(two_theta,fwhm):
-                """Returns the relative error based on fwhm"""
+        def par_error(two_theta,theta_error):
+            """Relative error based on error in fit."""
+            wl = alpha1
+            return wl/(2*math.sin(two_theta/2)) * math.tan(two_theta/360*math.pi)*theta_error
+
+        def lattice_error(two_theta,theta_error):
+                """Relative error"""
                 return fwhm/2.3548 * math.cos(two_theta/360 * math.pi)/two_theta*2  #fwhm/(2*sqrt(2ln2))
         def scherrer(fwhm,peak_position):
 
@@ -294,23 +300,23 @@ class xrdSample:
             if hkl == "110":
                 peak_df.loc[hkl,"a"] = get_a(d,hkl)
                 self.a = get_a(d,hkl)
-                peak_df.loc[hkl,"a_error"] = peak_df.loc[hkl,"a"]*lattice_error(peak_loc,fwhm)
+                peak_df.loc[hkl,"a_error"] = peak_df.loc[hkl,"a"]*par_error(peak_loc,peak_error)
             if hkl == "002":
                 peak_df.loc[hkl,"c"] = get_c(d, hkl)
                 self.c = get_c(d,hkl)
-                peak_df.loc[hkl,"c_error"] = peak_df.loc[hkl,"c"]*lattice_error(peak_loc,fwhm)
+                peak_df.loc[hkl,"c_error"] = peak_df.loc[hkl,"c"]*par_error(peak_loc,peak_error)
 
             if hkl == "100":
                 peak_df.loc[hkl,"a"] =  get_a(d, hkl)
-                peak_df.loc[hkl,"a_error"] = peak_df.loc[hkl,"a"]*lattice_error(peak_loc,fwhm)
+                peak_df.loc[hkl,"a_error"] = peak_df.loc[hkl,"a"]*par_error(peak_loc,peak_error)
             if hkl == "101":
                 if "002" in peak_df.index:
                     dummy_c = get_c(d,"002")
                     peak_df.loc[hkl,"a"] = get_a(d,hkl,c=dummy_c)
-                    peak_df.loc[hkl,"a_error"] = peak_df.loc[hkl,"a"]*lattice_error(peak_loc,fwhm)
+                    peak_df.loc[hkl,"a_error"] = peak_df.loc[hkl,"a"]*par_error(peak_loc,peak_error)
                     dummy_a = get_a(d,"110")
                     peak_df.loc[hkl,"c"] = get_c(d,hkl,a=dummy_a)
-                    peak_df.loc[hkl,"c_error"] = peak_df.loc[hkl,"c"]*lattice_error(peak_loc,fwhm)
+                    peak_df.loc[hkl,"c_error"] = peak_df.loc[hkl,"c"]*par_error(peak_loc,peak_error)
 
 
             peak_df.loc[hkl,"grain"] = scherrer(fwhm,peak_loc)
@@ -336,12 +342,12 @@ class xrdSample:
         ax_l = {"100": ax[0][0], "002": ax[0][1], "101": ax[1][0], "110": ax[1][1]}
 
         for hkl in self.exp_ang:
-            try:
-                self.fit_peak(hkl,keep_out =keep_out)
-                no_fit = False
-            except:
-                print("no fit of peak: (fit_all_peaks()): ",run_no,sub,hkl)
-                no_fit = True
+        #    try:
+            self.fit_peak(hkl,keep_out =keep_out)
+            no_fit = False
+            #except:
+        #        print("no fit of peak: (fit_all_peaks()): ",run_no,sub,hkl)
+        #        no_fit = True
             #################### plotting and recording results from fit ####################
             if no_fit:
                 continue
