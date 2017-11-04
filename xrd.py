@@ -209,6 +209,7 @@ class xrdSample:
         self.data.loc[x_labels,"fit"+hkl] = out.best_fit
 
         fwhm,fwhm_error = re.findall("v1_fwhm:\s+(\S+)\s+\+/-\s+(\S+)\s+\(\S+\%\)",out.fit_report())[0]
+        sigma,sigma_error = re.findall("v1_sigma:\s+(\S+)\s+\+/-\s+(\S+)\s+\(\S+\%\)",out.fit_report())[0]
         fheight,fheight_error = re.findall("v1_height:\s+(\S+)\s+\+/-\s+(\S+)\s+\(\S+\%\)",out.fit_report())[0]
         height = max(comps["v1_"])
         redchisqr = out.redchi
@@ -230,10 +231,12 @@ class xrdSample:
         self.peak.loc[hkl,"fheight"] = float(fheight)
         self.peak.loc[hkl,"fheight_error"] = float(fheight_error)
         self.peak.loc[hkl,"height"] = float(height)
+        self.peak.loc[hkl,"sigma"] = float(sigma)
+        self.peak.loc[hkl,"sigma_error"] = float(sigma_error)
 
 
         self.peak.loc[hkl,"peak"] = float(peak_location)
-        self.peak.loc[hkl,"peak_error"] = float(peak_location_error)
+        self.peak.loc[hkl,"peak_error"] = max(float(peak_location_error),0.0014) ### 0.0014 is variation of Al2O3 peak
         self.peak.loc[hkl,"redchisqr"] = float(redchisqr)
     ########## Calculated parameters  ########################################
     def peak_params(self):
@@ -265,10 +268,17 @@ class xrdSample:
             return 1 / math.sqrt(c2_inv)
         def calc_d(two_theta):
             return alpha1 / (2 * math.sin(two_theta * math.pi / 360))
-        def par_error(two_theta,theta_error):
-            """Relative error based on error in fit."""
+        def d_error(t_theta,t_theta_error):
+            """Returns the error in d. Units should be Angstrøm """
             wl = alpha1
-            return wl/(2*math.sin(two_theta/2)) * math.tan(two_theta/360*math.pi)*theta_error
+            machine_error = 0.008 ## or from variation of Al2O3 peaks.
+            t_error = max(machine_error,t_theta_error) ### Select the biggest error etimate from machine or fit.
+
+            d  = wl/2/math.sin(t_theta/360*math.pi)
+            tan = math.tan(t_theta/360*math.pi)
+            sigma_theta = t_error/360*math.pi
+
+            return d/tan*sigma_theta
 
         def lattice_error(two_theta,theta_error):
                 """Relative error"""
@@ -288,39 +298,40 @@ class xrdSample:
             fwhm = peak_df.loc[hkl,"fwhm"]
             fwhm_error = peak_df.loc[hkl,"fwhm_error"]
             peak_loc = peak_df.loc[hkl, "peak"]
+            peak_loc_error = peak_df.loc[hkl,"peak_error"]
 
             d = calc_d(peak_loc)
             peak_df.loc[hkl,"d"]=d
 
-            peak_error = lattice_error(peak_loc,fwhm)
+            ###### Check this! ###checked, seems ok now. 0.00014 from 0.008 fwhm of perfect Si top.
 
-            peak_df.loc[hkl,"peak_error"] = peak_error*peak_loc
+            peak_df.loc[hkl,"d_error"] = d_error(peak_loc,peak_loc_error)
 
                         ###### Get the a and c parameters #####
             if hkl == "110":
                 peak_df.loc[hkl,"a"] = get_a(d,hkl)
                 self.a = get_a(d,hkl)
-                peak_df.loc[hkl,"a_error"] = peak_df.loc[hkl,"a"]*par_error(peak_loc,peak_error)
+                peak_df.loc[hkl,"a_error"] = 2*d_error(peak_loc,peak_loc_error)
             if hkl == "002":
                 peak_df.loc[hkl,"c"] = get_c(d, hkl)
                 self.c = get_c(d,hkl)
-                peak_df.loc[hkl,"c_error"] = peak_df.loc[hkl,"c"]*par_error(peak_loc,peak_error)
+                peak_df.loc[hkl,"c_error"] = 2*d_error(peak_loc,peak_loc_error)
 
             if hkl == "100":
                 peak_df.loc[hkl,"a"] =  get_a(d, hkl)
-                peak_df.loc[hkl,"a_error"] = peak_df.loc[hkl,"a"]*par_error(peak_loc,peak_error)
+                peak_df.loc[hkl,"a_error"] = 2*d_error(peak_loc,peak_loc_error)
             if hkl == "101":
                 if "002" in peak_df.index:
                     dummy_c = get_c(d,"002")
                     peak_df.loc[hkl,"a"] = get_a(d,hkl,c=dummy_c)
-                    peak_df.loc[hkl,"a_error"] = peak_df.loc[hkl,"a"]*par_error(peak_loc,peak_error)
+                    peak_df.loc[hkl,"a_error"] = 2*d_error(peak_loc,peak_loc_error)
                     dummy_a = get_a(d,"110")
                     peak_df.loc[hkl,"c"] = get_c(d,hkl,a=dummy_a)
-                    peak_df.loc[hkl,"c_error"] = peak_df.loc[hkl,"c"]*par_error(peak_loc,peak_error)
+                    peak_df.loc[hkl,"c_error"] = 2*d_error(peak_loc,peak_loc_error)
 
 
             peak_df.loc[hkl,"grain"] = scherrer(fwhm,peak_loc)
-            peak_df.loc[hkl,"grain_error"] =fwhm_error/100*scherrer(fwhm,peak_loc)
+            peak_df.loc[hkl,"grain_error"] =scherrer(fwhm,peak_loc)/math.tan(fwhm/180*math.pi)*fwhm_error/180*math.pi
             ###### calculate u and b for sample #######
     def calc_u(self):
         a = self.a
@@ -424,6 +435,7 @@ def collectXRDfolder(folder):
             except:
                 print(inputfile)
     return XRD_data
+########## OK SO FAR ########
 
 
 

@@ -24,7 +24,7 @@ def p_press(MO, bub_temp):
     press = 10.0**(gas_con.loc["B",MO]-gas_con.loc["A",MO]/(273.15+float(bub_temp)+gas_con.loc["C",MO]))
     return float(press)
 
-def runDoc(runs_location="./"):
+def runDoc(runs_location="./",start_row = 670):
     """
 
     :param runs_location:
@@ -33,7 +33,7 @@ def runDoc(runs_location="./"):
     if runs_location[-1]!="/":
         runs_location = runs_location+"/"
 
-    start_row = 670
+
     WORD_NAMESPACE = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
     PARA = WORD_NAMESPACE + 'p'
     TEXT = WORD_NAMESPACE + 't'
@@ -176,14 +176,14 @@ def get_temp(runs,precursor, sample):
         # print(sample + " no temp "+precursor)
         return 0
 
-def get_runs(run_location):
+def get_runs(run_location,start_row = 670):
     """Read runs.docx and return a pandas dataframe with the columns:
     'RUN', 'mat', 'DEZn flow', 'DEZn temp','tBuOH flow', 'tBuOH temp', "TMAl flow",
     "TMAl temp", "TEGa flow", "TEGa temp",'MO_carrier', "Gas_carrier"
 
     run_location contains path and name of folder containing runs.docx
     """
-    run_df = runDoc(run_location)
+    run_df = runDoc(run_location, start_row)
 
     new_runs = {"TEGa flow": [get_flow(run_df,"TEGa", samples.strip()) for samples in run_df.loc[:, "RUN"]],
                 "TEGa temp": [get_temp(run_df,"TEGa", samples.strip()) for samples in run_df.loc[:, "RUN"]],
