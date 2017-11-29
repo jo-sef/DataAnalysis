@@ -7,8 +7,6 @@ import matplotlib.pyplot as plt
 from lmfit.models import LinearModel
 
 """Load data from files in a folder into a list of dictionaries with data extracted from filename"""
-
-
 def correcting_for_hump(in_panda):
     ##difference
     # at 991-1009
@@ -63,9 +61,128 @@ def correcting_for_hump(in_panda):
     corrected.loc[l_step:u_step] = t.loc[:]
 
     return corrected["T"]
+class uvSample:
+    import pycap as pc
+    """Read a UV sample file, and perform some basic operations on the data:
+        1. Make a dataframe with the data.
+        2. Calculate the absorption coefficient
+        3. Calculate the derivative of the absorption coefficient
+        4. Perform Tauc analysis.
+    """
+    def correcting_for_hump(self,in_panda):
+        ##difference
+        # at 991-1009
+        hump_min = 1010
+        hump_max = 1592
+        step_end = 1604
+
+        step_start = 992
+
+        l_step = in_panda.index[in_panda.loc[:, "wl"] == step_start][0]
+        l_hump = in_panda.index[in_panda.loc[:, "wl"] == hump_min][0]
+
+        sl = in_panda.loc[l_step, "T"]
+        el = in_panda.loc[l_hump, "T"]
+        # start_i = in_panda.index[]
+        dl = el - sl
+
+        # at 1591-1009
+        u_hump = in_panda.index[in_panda.loc[:, "wl"] == hump_max][0]
+        u_step = in_panda.index[in_panda.loc[:, "wl"] == step_end][0]
+
+        su = in_panda.loc[u_hump, "T"]
+        eu = in_panda.loc[u_step, "T"]
+        du = su - eu
+
+        t = in_panda.copy().loc[l_step:u_step, :]
+
+        ##start and end of hump
+
+        hump_rows = u_hump - l_hump
+
+        for i in range(hump_rows):
+            d = dl + i / hump_rows * (du - dl)
+            # val = t.loc[l_hump+i,"T"]
+            t.loc[l_hump + i, "T"] = t.loc[l_hump + i, "T"] - d
+
+        ##getting the end spikes:
+        rows = l_hump - l_step
+
+        for i in range(rows):
+            val = t.loc[l_step + i, "T"]
+            t.loc[l_step + i] = val - i / rows * dl
+
+        rows = u_step - u_hump
+
+        for i in range(rows):
+            val = t.loc[u_hump + i, "T"]
+            t.loc[u_hump + i] = val - (1 - i / rows) * du
+
+        corrected = in_panda.copy()
+
+        corrected.loc[l_step:u_step] = t.loc[:]
+
+        return corrected["T"]
+
+    def readUVfile(self,filename):
+        """ Read the Angles and intensities off the file. Assume that the intensity of the AL2O3 peak is constant for all samples because
+        the films are thin. Then we can normalise the intensities."""
+
+        data = pd.read_table(filename, skiprows=2, names=["wl", "T"])
+
+        data.loc[:, "c_T"] = self.correcting_for_hump(data)
+        data.loc[:, "hv"] = 1240 / data.loc[:, "wl"]
+        data.loc[:, "alpha"] = -np.log(data.loc[:, "c_T"] / 100)
+        data.loc[:, "Tauc"] = (data.loc[:, "alpha"] * data.loc[:, "hv"]) ** 2
+        data.loc[:, "d_alpha"] = self.pc.functions.derivative.smoothed(data.loc[:, "hv"], data.loc[:, "alpha"])
+        data.loc[:, "d_Tauc"] = self.pc.functions.derivative.smoothed(data.loc[:, "hv"], data.loc[:, "Tauc"])
+        return data
+    def runFromName(self):
+        try:
+            run_no,sub =re.findall("(\d\d\d)([rRCcaAmM])", self.filename)[0]
+            self.sub = sub.upper()
+            self.run_no = int(run_no)
+        except:
+            if re.search("[Aa][Ii][Rr]", self.filename):
+                run_no = None
+                sub = None
+                self.sub =None
+
+            if re.search("[Ss][Uu][bB]", self.filename):
+                run_no = None
+                sub = re.findall("([RrCcAaMm])-",self.filename)[0]
+                self.sub = sub.upper()
+            else:
+                print(self.filename)
+
+            self.run_no = 0
+            return("run: %i sub: %s" %(self.run_no,self.sub))
+    def nan_helper(self,y):
+        """Helper to handle indices and logical indices of NaNs.
+
+        Input:
+            - y, 1d numpy array with possible NaNs
+        Output:
+            - nans, logical indices of NaNs
+            - index, a function, with signature indices= index(logical_indices),
+              to convert logical indices of NaNs to 'equivalent' indices
+        Example:
+            #>>> # linear interpolation of NaNs
+            #>>> nans, x= nan_helper(y)
+            #>>> y[nans]= np.interp(x(nans), x(~nans), y[~nans])
+        """
+
+        return np.isnan(y), lambda z: z.nonzero()[0]
+
+    def __init__(self,filename):
+        self.filename = filename
+        self.data = self.readUVfile(filename)
+        self.runFromName()
+
+
 
 def getFile(filename):
-    """ Get UV data from file from text file. calculate tauc, derivatives, correction of Transmission, and 
+    """ Get UV data from file from text file. calculate tauc, derivatives, correction of Transmission, and
     absorption coefficient
     """
     data = pd.read_table(filename, skiprows=2, names=["wl", "T"])
@@ -120,7 +237,7 @@ def getFolder(folder):
     return UV_data
 
 def taucplot(dataset, UV_folder="./AZO_2016_UV/", plot = False):
-    """Fit tauc plot according to highest d_tauc/d_hv and a few points above and below. 
+    """Fit tauc plot according to highest d_tauc/d_hv and a few points above and below.
 
     """
     report_folder = UV_folder+"UV_fit/"
@@ -191,7 +308,7 @@ def taucplot(dataset, UV_folder="./AZO_2016_UV/", plot = False):
 def taucfile(t_file):
     """
     :param t_file: contains the fit report produced by the taucplot function
-    :return: a dictionary with run_no, substrate and calculated bandgap 
+    :return: a dictionary with run_no, substrate and calculated bandgap
     (provided the run_no and substrate is part of the filename)
     """
     run_no,sub = re.findall("(\d\d\d)([aAmMcCrR])", t_file)[0]
