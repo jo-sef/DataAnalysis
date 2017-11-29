@@ -18,7 +18,35 @@ sample_list = ["709"]
 
 ##################### XRD FUNCTIONS #########################
 """dataset is an element in the list of dictionaries returned by collectXRDfolder"""
+def read_fit(fit_report_file):
+        with open(fit_report_file) as fh:
+            pars = pd.DataFrame()
+            capture = False
+            hkl = None
+            for line in fh:
 
+
+                find_hkl = re.compile("Fit of \d\d\d peak:(\d\d\d)")
+                capture_variable = re.compile("v1_(\w+):\s+(\S+) \S+ (\S+)")
+                capture_on = re.compile("\[\[Variables\]\]")
+                capture_off = re.compile("\[\[Correlations\]\]")
+
+                if find_hkl.search(line):
+                    hkl = find_hkl.match(line).group(1)
+                if capture_on.search(line):
+                    capture = True
+                if capture_off.search(line):
+                    capture = False
+
+                if capture:
+                    found = capture_variable.search(line)
+                    if found:
+
+                        variable,value,error = capture_variable.findall(line)[0]
+                        pars.loc[hkl,variable] = float(value)
+                        pars.loc[hkl,variable+"_error"] = float(error)
+        pars.loc[:,"adj-height"]=pars.loc[:,"height"]*1.912455771981102 #average factor from peak fits
+        return pars
 
 class xrdSample:
     no_peaks = False
@@ -71,6 +99,7 @@ class xrdSample:
 
         #y = y.rolling(window=10).min()
         #y = y.rolling(window=10).max()
+
         data.loc[:,"y_mean"] = y.rolling(window=100).mean()
         data.loc[:,'y_back'] = data.loc[:, "y_mean"]
 
@@ -154,7 +183,7 @@ class xrdSample:
             self.data["peak"+hkl] = np.nan
             self.data["peak"+hkl] = self.data.loc[:,"PSD-b.g."][peak_within_tol]
 
-    def fit_peak(self,hkl="none",keep_out = True):
+    def fit_peak(self,hkl="none",keep_out = True, model = "Voigt",gammasigma = True):
         """ Model the peak of a given peak using a two voigt function.
         The functions have the same gamma and sigma, and the amplitude of
         v2_ is half that of v1_. There is a shift between the two, but this is
@@ -162,17 +191,16 @@ class xrdSample:
         The shift max is chosen through trial and error. """
 
         max_shift = {"012":0.08,"100": 0.0798, "002": 0.091, "101": 0.1158,"006":0.11, "110": 0.175, "none":0.1}
-        from lmfit.models import VoigtModel
-        mod1 = VoigtModel(prefix = "v1_")
-        mod2 = VoigtModel(prefix = "v2_")
-        mod =mod1+mod2
+
+        from lmfit.models import VoigtModel,PseudoVoigtModel
+
         if hkl in max_shift.keys():
             peak_column = "peak"+hkl
             xy = self.data.loc[:,["Angle",peak_column]].dropna()
             shift_tol = 0.01
         if hkl in ["012","006"]:
             peak_column = "PSD-b.g."
-            xy = self.data.loc[:,["Angle",peak_column,"peak"+hkl]].dropna()
+            xy = self.data.loc[:,["Angle",peak_column]].dropna()
             shift_tol = 0.05
         if hkl == "none":
             peak_column = "PSD"
@@ -183,16 +211,23 @@ class xrdSample:
         x_labels = x.index
         y = list(xy[peak_column])
 
-        pars = mod.make_params(verbose = False)
-        #pars['v1_center'].set(value = self.exp_ang[hkl],min = self.exp_ang[hkl] - max_shift[hkl]/2,max=self.exp_ang[hkl] + max_shift[hkl]/2)
-        pars['v1_sigma'].set(min=0)
-        pars['v2_sigma'].set(expr="v1_sigma")
-        pars['v1_amplitude'].set(value=max(y)/2, min=0, max=max(y), vary=True, expr="")
-        pars['v2_amplitude'].set(value = max(y)/2,min=0, expr="v1_amplitude/2")
 
-        pars.add('shift', value=max_shift[hkl], min=max_shift[hkl]-shift_tol, max=max_shift[hkl]+shift_tol)
-        pars['v2_center'].set(expr="v1_center+shift")
-        pars['v2_gamma'].set(expr='v1_gamma')
+        if model == "Voigt":
+            mod1 = VoigtModel(prefix = "v1_")
+            mod2 = VoigtModel(prefix = "v2_")
+            mod =mod1+mod2
+
+            pars = mod.make_params(verbose = False)
+            #pars['v1_center'].set(value = self.exp_ang[hkl],min = self.exp_ang[hkl] - max_shift[hkl]/2,max=self.exp_ang[hkl] + max_shift[hkl]/2)
+            pars['v1_sigma'].set(min=0)
+            pars['v2_sigma'].set(expr="v1_sigma")
+            pars['v1_amplitude'].set(value=max(y)/2, min=0, max=max(y), vary=True, expr="")
+            pars['v2_amplitude'].set(value = max(y)/2,min=0, expr="v1_amplitude/2")
+            if gammasigma==False:
+                pars['v1_gamma'].set(value="v1_sigma", vary=True, expr='')
+            pars.add('shift', value=max_shift[hkl], min=max_shift[hkl]-shift_tol, max=max_shift[hkl]+shift_tol)
+            pars['v2_center'].set(expr="v1_center+shift")
+            pars['v2_gamma'].set(expr='v1_gamma')
 
         try:
             out = mod.fit(y, pars, x=x)
@@ -202,42 +237,15 @@ class xrdSample:
             unable_to_fit = True
         if keep_out:
             self.out.update({hkl:out})
-        comps = out.eval_components(x=x)
 
+        comps = out.eval_components(x=x)
         self.data.loc[x_labels,"v1_comp"+hkl] = comps["v1_"]
         self.data.loc[x_labels,"v2_comp"+hkl] = comps["v2_"]
         self.data.loc[x_labels,"fit"+hkl] = out.best_fit
-
-        fwhm,fwhm_error = re.findall("v1_fwhm:\s+(\S+)\s+\+/-\s+(\S+)\s+\(\S+\%\)",out.fit_report())[0]
-        sigma,sigma_error = re.findall("v1_sigma:\s+(\S+)\s+\+/-\s+(\S+)\s+\(\S+\%\)",out.fit_report())[0]
-        fheight,fheight_error = re.findall("v1_height:\s+(\S+)\s+\+/-\s+(\S+)\s+\(\S+\%\)",out.fit_report())[0]
-        height = max(comps["v1_"])
+        fit_report = out.fit_report()
         redchisqr = out.redchi
 
-        if re.search("v1_center:\s+(\S+)\s+\+/-\s+\S+\s+\(\S+\%\)",out.fit_report()):
-            peak_location,peak_location_error = re.findall("v1_center:\s+(\S+)\s+\+/-\s+(\S+)\s+\(\S+\%\)",out.fit_report())[0]
-
-        peak_correct = abs(float(peak_location) - self.exp_ang[hkl]) < 1
-
-        if unable_to_fit or not peak_correct:
-
-            fwhm,fwhm_error,fheight,fheight_error,height = [np.nan]*5
-            redchisqr = np.inf
-
-
-
-        self.peak.loc[hkl,"fwhm"] = float(fwhm)
-        self.peak.loc[hkl,"fwhm_error"] = float(fwhm_error)
-        self.peak.loc[hkl,"fheight"] = float(fheight)
-        self.peak.loc[hkl,"fheight_error"] = float(fheight_error)
-        self.peak.loc[hkl,"height"] = float(height)
-        self.peak.loc[hkl,"sigma"] = float(sigma)
-        self.peak.loc[hkl,"sigma_error"] = float(sigma_error)
-
-
-        self.peak.loc[hkl,"peak"] = float(peak_location)
-        self.peak.loc[hkl,"peak_error"] = max(float(peak_location_error),0.0014) ### 0.0014 is variation of Al2O3 peak
-        self.peak.loc[hkl,"redchisqr"] = float(redchisqr)
+        return fit_report
     ########## Calculated parameters  ########################################
     def peak_params(self):
         """ calculates peak parameters: a, c, d, grain sizes, and errors based on fwhm. inserts values into
@@ -297,8 +305,8 @@ class xrdSample:
         for hkl in peak_df.index:
             fwhm = peak_df.loc[hkl,"fwhm"]
             fwhm_error = peak_df.loc[hkl,"fwhm_error"]
-            peak_loc = peak_df.loc[hkl, "peak"]
-            peak_loc_error = peak_df.loc[hkl,"peak_error"]
+            peak_loc = peak_df.loc[hkl, "center"]
+            peak_loc_error = peak_df.loc[hkl,"center_error"]
 
             d = calc_d(peak_loc)
             peak_df.loc[hkl,"d"]=d
@@ -342,7 +350,7 @@ class xrdSample:
         c = self.c
         self.b = c*u
 
-    def fit_all_peaks(self,report_folder="",keep_out = False):
+    def fit_sample(self,report_folder="",model = "Voigt",keep_out = False,gammasigma = True):
         """ Fits all peaks, plots the results, and calculates lattice parameters along with u and b. """
         run_no = self.run_no
         sub  = self.sub
@@ -351,15 +359,20 @@ class xrdSample:
         f.suptitle(str(self.run_no) + self.sub)
         f_sap.suptitle(str(self.run_no) + self.sub + r"$Al_2O_3$")
         ax_l = {"100": ax[0][0], "002": ax[0][1], "101": ax[1][0], "110": ax[1][1]}
+        fits =dict()
 
         for hkl in self.exp_ang:
-        #    try:
-            self.fit_peak(hkl,keep_out =keep_out)
+            if self.sub not in ("R","C"):
+                self.no_peaks = True
+                continue
+            #try:
+            current_fit = self.fit_peak(hkl,keep_out =keep_out, model = model,gammasigma=gammasigma)
+            fits.update({hkl: current_fit})
             no_fit = False
             #except:
-        #        print("no fit of peak: (fit_all_peaks()): ",run_no,sub,hkl)
-        #        no_fit = True
-            #################### plotting and recording results from fit ####################
+            #no_fit = True
+            #print("problem fitting %s-%s: %s" %(self.run_no,self.sub,hkl))
+
             if no_fit:
                 continue
             if hkl in ax_l.keys():
@@ -394,12 +407,20 @@ class xrdSample:
         else:
             f.savefig(report_folder+"/XRD_fit_%s%s.png" % (self.run_no, self.sub), dpi=300)
             f_sap.savefig(report_folder+"/XRD_fit_%s%s_sapphire.png" % (self.run_no, self.sub), dpi=300)
+            with open(report_folder+"/fit_report_%s%s.txt" %(self.run_no, self.sub),"w" ) as fh:
+                for rep_hkl in fits:
+                    print(rep_hkl)
+                    fh.write("Fit of {} peak:{}\n\n".format(self.run_no,rep_hkl))
+                    fh.write(fits[rep_hkl])
+                    fh.write("\n")
 
         plt.close(f)
         plt.close(f_sap)
-        self.peak_params()
-        self.calc_u()
-        self.calc_b()
+        if self.no_peaks == False:
+            self.peak = read_fit(report_folder+"/fit_report_%s%s.txt" %(self.run_no, self.sub))
+            self.peak_params()
+            self.calc_u()
+            self.calc_b()
 
     def __init__(self,filename):
         self.exp_ang = {"100": 31.77, "002": 34.422, "101": 36.253, "110": 56.603}
