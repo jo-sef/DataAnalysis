@@ -1,3 +1,4 @@
+import logging
 import re
 #runs_location = "M:\\PhD Main Folder\\09MOVPE\\"
 runs_location = "./"
@@ -7,6 +8,9 @@ import xml.etree.cElementTree
 import pandas as pd
 import numpy as np
 from pathlib import Path
+
+
+logger = logging.getLogger(__name__)
 
 
 def p_press(MO, bub_temp):
@@ -99,21 +103,24 @@ def get_flow(runs_df,precursor, sample):
         try:
             f = float(value.split("/")[0].strip())
             return f
-        except:
+        except (AttributeError, ValueError, KeyError) as exc:
+            logger.warning("Failed to parse tBuOH flow for %s: %s", sample, exc)
             return 0
     if precursor == "MO_carrier":
         value = runs_df.loc[sample, "MO carrier"]
         try:
             return float(runs_df.loc[sample, "MO carrier"].replace(",", "."))
-        except:
-            print(sample+"no MO carrier")
+        except (AttributeError, ValueError, KeyError) as exc:
+            logger.warning("%s no MO carrier: %s", sample, exc)
+            return 0
 
     if precursor == "Gas_carrier":
         gas = runs_df.loc[sample, "Gas carrier"]
         try:
             return float(gas)
-        except:
-            print(gas)
+        except (ValueError, TypeError, KeyError) as exc:
+            logger.warning("Invalid Gas carrier value for %s: %s", sample, exc)
+            return 0
 
     if precursor == "TMAl":
         for cols in runs_df.loc[sample]:
@@ -129,9 +136,12 @@ def get_flow(runs_df,precursor, sample):
                     return float(f[0])
     if precursor == "DEZn":
         try:
-            d = float(runs_df.loc[sample, "DEZn flow"].split("/")[0].strip().replace(",", "."))
+            d = float(
+                runs_df.loc[sample, "DEZn flow"].split("/")[0].strip().replace(",", ".")
+            )
             return d
-        except:
+        except (AttributeError, ValueError, KeyError) as exc:
+            logger.warning("Failed to parse DEZn flow for %s: %s", sample, exc)
             return 0
     else:
         # print(sample+" precursor not found "+precursor)
@@ -147,8 +157,11 @@ def get_temp(runs,precursor, sample):
     """
     if precursor == "tBuOH":
         try:
-            return float(runs["tBuOH bath"][sample].split("/")[0].strip().replace(",", "."))
-        except:
+            return float(
+                runs["tBuOH bath"][sample].split("/")[0].strip().replace(",", ".")
+            )
+        except (AttributeError, ValueError, KeyError) as exc:
+            logger.warning("Failed to parse tBuOH bath temp for %s: %s", sample, exc)
             return 0
     if precursor == "TMAl":
         for cols in runs.loc[sample]:
@@ -169,8 +182,9 @@ def get_temp(runs,precursor, sample):
             temp = temp.replace(",", ".")
         try:
             return float(temp)
-        except:
-            print(sample)
+        except (TypeError, ValueError, KeyError) as exc:
+            logger.warning("Failed to parse DEZn bath temp for %s: %s", sample, exc)
+            return 0
     else:
         # print(sample + " no temp "+precursor)
         return 0
