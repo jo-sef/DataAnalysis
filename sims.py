@@ -7,6 +7,7 @@ import pandas as pd
 import os
 import re
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 
 def getFile(filename):
@@ -104,15 +105,14 @@ def getFolder(folder, figures=False):
         return SIMS_data a dictionary with filename, run_no, sub, and data as a df
 
     """
-    if not folder.endswith("/"):
-        folder = folder + "/"
+    folder = Path(folder)
 
     sample_index = "SIMS_sample_index.txt"
 
     sims_data = []
 
 ### Record data from each file so that the calibration files can be used in next loop.
-    with open(folder + sample_index, "r") as f:
+    with open(folder / sample_index, "r") as f:
         for lines in f:
 
             if lines.startswith("#") or not lines.strip():
@@ -130,7 +130,7 @@ def getFolder(folder, figures=False):
                 sub = None
                 filename = lines.split()[0]
 
-            file_data = sims_class(folder + filename)
+            file_data = sims_class(folder / filename)
 
             sims_data.append({"filename": filename, "data": file_data, "run_no": run_no, "sub": sub})
 
@@ -165,10 +165,10 @@ def getFolder(folder, figures=False):
         #### Save figure for visual check of SIMS data fit
         if figures == True:
 
-            figure_folder = folder + "SIMS_fits/"
+            figure_folder = folder / "SIMS_fits"
 
-            if not os.path.exists(figure_folder):
-                os.makedirs(figure_folder)
+            if not figure_folder.exists():
+                figure_folder.mkdir(parents=True, exist_ok=True)
             save_name = "SIMS_%s%s.png" % (s["run_no"], s["sub"])
 
             f, ax = plt.subplots(1, 1)
@@ -195,7 +195,7 @@ def getFolder(folder, figures=False):
             window = (data.iloc[sims_object.window[0]]["Depth"], data.iloc[sims_object.window[1]]["Depth"])
             ax.axvline(window[0])
             ax.axvline(window[1])
-            f.savefig(figure_folder + save_name)
+            f.savefig(figure_folder / save_name)
             plt.close("all")
     return sims_data
 

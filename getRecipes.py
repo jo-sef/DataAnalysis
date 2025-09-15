@@ -6,6 +6,7 @@ import zipfile
 import xml.etree.cElementTree
 import pandas as pd
 import numpy as np
+from pathlib import Path
 
 
 def p_press(MO, bub_temp):
@@ -24,15 +25,13 @@ def p_press(MO, bub_temp):
     press = 10.0**(gas_con.loc["B",MO]-gas_con.loc["A",MO]/(273.15+float(bub_temp)+gas_con.loc["C",MO]))
     return float(press)
 
-def runDoc(runs_location="./",start_row = 670):
+def runDoc(runs_location="./", start_row=670):
     """
 
     :param runs_location:
     :return: raw dataframe of runs.docx
     """
-    if runs_location[-1]!="/":
-        runs_location = runs_location+"/"
-
+    runs_path = Path(runs_location)
 
     WORD_NAMESPACE = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
     PARA = WORD_NAMESPACE + 'p'
@@ -41,7 +40,7 @@ def runDoc(runs_location="./",start_row = 670):
     ROW = WORD_NAMESPACE + 'tr'
     CELL = WORD_NAMESPACE + 'tc'
 
-    with zipfile.ZipFile(runs_location + "Runs.docx") as docx:
+    with zipfile.ZipFile(runs_path / "Runs.docx") as docx:
         tree = xml.etree.cElementTree.XML(docx.read('word/document.xml'))
 
     i = 1
