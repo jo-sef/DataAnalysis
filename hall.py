@@ -4,6 +4,7 @@ HALL_data = []
 import os
 import re
 import pandas as pd
+from pathlib import Path
 
 ###Get results from a single file
 def getFile(result_filename, folder="./", thickness_file="AZO_hall_thicknesses_20170314.txt"):
@@ -68,22 +69,21 @@ def getFile(result_filename, folder="./", thickness_file="AZO_hall_thicknesses_2
 
 
 ##get results from all files in folder
-def getFolder(folder,thickness_file="AZO_hall_thicknesses_20170314.txt"):
+def getFolder(folder, thickness_file="AZO_hall_thicknesses_20170314.txt"):
     hall_data = []
-    if not folder.endswith("/"):
-        folder = folder+"/"
+    folder = Path(folder)
 
-    files_in_folder = [x for x in os.listdir(folder) if (x.endswith(".txt") and x !=thickness_file and x !="folderIndex.txt")]
+    files_in_folder = [x for x in os.listdir(folder) if (x.endswith(".txt") and x != thickness_file and x != "folderIndex.txt")]
 
     for items in files_in_folder:
         run_no_in_name = re.search("(\d\d\d)([RrCcMmAa])", items)
         if not run_no_in_name:
-            print(items,"run_no missing")
+            print(items, "run_no missing")
             continue
 
         file = items.strip()
 
-        results = getFile(folder+file, folder=folder,thickness_file=thickness_file)
+        results = getFile(folder / file, folder=str(folder), thickness_file=thickness_file)
 
         if results == "nothing":
             continue
