@@ -11,51 +11,84 @@ from pathlib import Path
 from .utils.merge import merge_measurements
 
 
-def getFile(filename):
-    """
-    Load data from file into a pandas dataframe
-    :param filename: name of sims output file (text format)
-    :return: a dataframe of depth,Al Counts, Zn Counts
+def getFile(filename, skiprows=15, skipfooter=140):
+    """Load SIMS text output into a :class:`pandas.DataFrame`.
+
+    Parameters
+    ----------
+    filename : str or :class:`pathlib.Path`
+        Name of SIMS output file. The file must contain four tab separated
+        columns representing ``Al_depth``, ``Al_count``, ``Zn_depth`` and
+        ``Zn_count``.
+    skiprows : int, optional
+        Number of header lines to skip. Defaults to ``15`` as produced by the
+        measurement software.
+    skipfooter : int, optional
+        Number of footer lines to skip. Defaults to ``140``.
+
+    Returns
+    -------
+    :class:`pandas.DataFrame`
+        DataFrame with the required columns ``Depth``, ``Al Counts`` and
+        ``Zn Counts`` where the depth grid has been interpolated onto a common
+        axis for aluminium and zinc.
     """
     with open(filename, "r") as fh:
-        data = pd.read_table(fh, names=["Al_depth", "Al_count", "Zn_depth", "Zn_count"], skiprows=15, delimiter="\t*",
-                             skipfooter=140, engine="python")
+        data = pd.read_table(
+            fh,
+            names=["Al_depth", "Al_count", "Zn_depth", "Zn_count"],
+            skiprows=skiprows,
+            delimiter="\t*",
+            skipfooter=skipfooter,
+            engine="python",
+        )
 
-        x = np.linspace(int(min(data.Al_depth)), int(max(data.Zn_depth)),
-                        2 * len(data.Al_depth))
+        x = np.linspace(int(min(data.Al_depth)), int(max(data.Zn_depth)), 2 * len(data.Al_depth))
 
-        al_y = interp1d(data.Al_depth, data.Al_count, bounds_error=False,
-                        fill_value=np.NaN)(x)
-        zn_y = interp1d(data.Zn_depth, data.Zn_count, bounds_error=False,
-                        fill_value=np.NaN)(x)
+        al_y = interp1d(data.Al_depth, data.Al_count, bounds_error=False, fill_value=np.NaN)(x)
+        zn_y = interp1d(data.Zn_depth, data.Zn_count, bounds_error=False, fill_value=np.NaN)(x)
         new_data = {"Depth": x, "Al Counts": al_y, "Zn Counts": zn_y}
         out_data = pd.DataFrame(new_data, columns=["Depth", "Al Counts", "Zn Counts"])
 
         return out_data
 
 
-def t_index(data):
-    """
-    Find the depth from the Zn counts. Depth is where the rate of change in the negative direction is minimum.
-    Above 25 nm because of surface effects
+def t_index(data, surface_exclusion_nm=15):
+    """Index of the minimum zinc count beneath the surface region.
+
+    Parameters
+    ----------
+    data : :class:`pandas.DataFrame`
+        DataFrame containing the columns ``Depth`` and ``Zn Counts``.
+    surface_exclusion_nm : float, optional
+        Depth in nanometres to exclude from the analysis to avoid surface
+        effects. Only points deeper than this value are considered when
+        searching for the minimum. Defaults to ``15``.
+
+    Returns
+    -------
+    int
+        Index in ``data`` corresponding to the minimum value of
+        ``Zn Counts`` deeper than ``surface_exclusion_nm``.
     """
 
     col = "Zn Counts"
     x = data.dropna().loc[:, "Depth"]
     y = data.dropna().loc[:, col]
 
-    mxi = y[x > 15].idxmin()
+    mxi = y[x > surface_exclusion_nm].idxmin()
 
     return mxi
 
 class sims_class:
-    """
+    """Container for SIMS measurements and normalisation routines.
 
+    The class reads a SIMS depth profile, determines a region of interest
+    around the zinc minimum and provides utilities for normalising aluminium
+    counts to an external calibration.
     """
 
     normalized = False
-    # Al = "not normalized yet"
-    # Al_df = "not normalized yet"
     filename = None
     data = None
     mxi = None
@@ -64,38 +97,84 @@ class sims_class:
     thickness = None
     raw = None
 
-    def __init__(self, filename):
-        ## Raw data ##
+    def __init__(
+        self,
+        filename,
+        rsf_threshold=1e15,
+        rsf_high=1,
+        rsf_low=4e15,
+        window_fraction=0.75,
+        header_lines=15,
+        footer_lines=140,
+    ):
+        """Load and preprocess a SIMS depth profile.
+
+        Parameters
+        ----------
+        filename : str or :class:`pathlib.Path`
+            Path to the SIMS output file.
+        rsf_threshold : float, optional
+            Threshold on average aluminium counts used to decide which RSF
+            value to apply. Defaults to ``1e15``.
+        rsf_high : float, optional
+            RSF applied when the aluminium counts exceed ``rsf_threshold``.
+            Defaults to ``1``.
+        rsf_low : float, optional
+            RSF applied when the aluminium counts fall below ``rsf_threshold``.
+            Defaults to ``4e15``.
+        window_fraction : float, optional
+            Fraction of the total profile around the zinc minimum used when
+            calculating average counts and standard deviations. Defaults to
+            ``0.75``.
+        header_lines : int, optional
+            Number of header lines to skip when reading ``filename``.
+        footer_lines : int, optional
+            Number of footer lines to skip when reading ``filename``.
+        """
+
         self.filename = filename
-        self.data = getFile(self.filename)
+        self.data = getFile(self.filename, skiprows=header_lines, skipfooter=footer_lines)
 
         ## thickness and selected portion (75%)
         self.mxi = t_index(self.data)
-        window_size = 0.75 * self.mxi
+        window_size = window_fraction * self.mxi
         self.window = (int(self.mxi / 2 - window_size / 2), int(self.mxi / 2 + window_size / 2))
         self.thickness = self.data.iloc[self.mxi]["Depth"]
 
         ##average Counts
 
+        self.raw = self.data.iloc[self.window[0] : self.window[1]].mean()
+        self.std = self.data.iloc[self.window[0] : self.window[1]].std()
 
-        self.raw = self.data.iloc[self.window[0]:self.window[1]].mean()
-        self.std = self.data.iloc[self.window[0]:self.window[1]].std()
-
-        if self.raw["Al Counts"] > 1e15:
-            rsf = 1
-        else:
-            rsf = 4e15
-        self.data["Al Counts"] = self.data.loc[:,"Al Counts"]*rsf
+        rsf = rsf_high if self.raw["Al Counts"] > rsf_threshold else rsf_low
+        self.data["Al Counts"] = self.data.loc[:, "Al Counts"] * rsf
 
         ## Correcting for Zn variations ##
 
-        corrected_Al = self.data.loc[:,"Al Counts"] / self.data.loc[:,"Zn Counts"] * self.raw["Zn Counts"]
+        corrected_Al = self.data.loc[:, "Al Counts"] / self.data.loc[:, "Zn Counts"] * self.raw["Zn Counts"]
 
-        self.data.loc[:,"corrected Al Counts"] = corrected_Al.iloc[self.window[0]:self.window[1]]
+        self.data.loc[:, "corrected Al Counts"] = corrected_Al.iloc[self.window[0] : self.window[1]]
 
     def normalize(self, Zn_standard):
-        self.Zn_correction_factor =Zn_standard/self.raw["Zn Counts"]
-        self.data.loc[:,"normalized Al Counts"] = self.data.loc[:,"corrected Al Counts"] *self.Zn_correction_factor
+        """Normalise aluminium counts using an external zinc calibration.
+
+        Parameters
+        ----------
+        Zn_standard : float
+            Average zinc counts measured on a standard sample. This value is
+            required to normalise the aluminium counts.
+
+        Raises
+        ------
+        ValueError
+            If ``Zn_standard`` is ``None``.
+        """
+
+        if Zn_standard is None:
+            raise ValueError("Zn calibration data is required for normalisation")
+
+        self.Zn_correction_factor = Zn_standard / self.raw["Zn Counts"]
+        self.data.loc[:, "normalized Al Counts"] = self.data.loc[:, "corrected Al Counts"] * self.Zn_correction_factor
 
         self.Al = self.data["normalized Al Counts"].mean()
         self.Al_error = self.data["normalized Al Counts"].std()
