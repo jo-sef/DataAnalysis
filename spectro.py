@@ -342,6 +342,5 @@ def taucfolder(t_folder):
 def to_list(samples_data, uv_data):
     for dataset in samples_data:
         for u_sample in uv_data:
-            if dataset["run_no"] == u_sample["run_no"] and dataset["sub"] == u_sample["sub"]:
-                dataset.update(
-                    {"t_bandgap": u_sample["t_bandgap"]})
+            if dataset.run_no == u_sample["run_no"] and dataset.sub == u_sample["sub"]:
+                dataset.t_bandgap = u_sample["t_bandgap"]

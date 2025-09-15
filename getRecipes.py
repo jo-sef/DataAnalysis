@@ -8,6 +8,7 @@ import xml.etree.cElementTree
 import pandas as pd
 import numpy as np
 from pathlib import Path
+from .models import Sample
 
 
 logger = logging.getLogger(__name__)
@@ -217,14 +218,11 @@ def get_runs(run_location,start_row = 670):
                                            'MO_carrier', "Gas_carrier"])
     return new_runs_df
 
-def add_flows(a_list,runs):
-    """ Add flows from runs to a_list. runs is obtained by importing getRecipes:
-    and calculates molar ratios based on p_press
-    runs = getRecipes.get_runs(runs_location)
-    """
+def add_flows(a_list, runs):
+    """Add flows from runs to ``a_list`` of :class:`Sample` objects."""
 
     for sample in a_list:
-        run_no = str(sample["run_no"])
+        run_no = str(sample.run_no)
 
         if run_no is None:
             continue
@@ -236,11 +234,10 @@ def add_flows(a_list,runs):
         TEGa_flow = runs.loc[run_no, "TEGa flow"]
         Gas_carrier = runs.loc[run_no, "Gas_carrier"]
 
-        p_DEZn = p_press("DEZn", runs.loc[run_no,"DEZn temp"])
-        p_TMAl = p_press("TMAl", runs.loc[run_no,"TMAl temp"])
+        p_DEZn = p_press("DEZn", runs.loc[run_no, "DEZn temp"])
+        p_TMAl = p_press("TMAl", runs.loc[run_no, "TMAl temp"])
         p_tBuOH = p_press("tBuOH", runs.loc[run_no, "tBuOH temp"])
         p_TEGa = p_press("TEGa", runs.loc[run_no, "TEGa temp"])
-
 
         if float(TMAl_flow) != 0 or float(TEGa_flow) != 0:
             MO_total = 2000 + MO_carrier * 1000
@@ -250,65 +247,69 @@ def add_flows(a_list,runs):
         Gas_total = Gas_carrier * 1000 + 1000
 
         DEZn_molar_flow = DEZn_flow / 22400 * p_DEZn / (900 - p_DEZn)
-        TMAl_molar_flow = TMAl_flow/ 22400 * p_TMAl / (900 - p_TMAl)
-        TEGa_molar_flow = TEGa_flow/ 22400 * p_TEGa / (900 - p_TEGa)
+        TMAl_molar_flow = TMAl_flow / 22400 * p_TMAl / (900 - p_TMAl)
+        TEGa_molar_flow = TEGa_flow / 22400 * p_TEGa / (900 - p_TEGa)
         O_molar_flow = tBuOH_flow / 22400 * p_tBuOH / (900 - p_tBuOH)
 
         if DEZn_flow != 0 and O_molar_flow != 0:
-            vi_ii = O_molar_flow /DEZn_molar_flow * MO_total / Gas_total
-            ii = DEZn_molar_flow/MO_total
-            vi = O_molar_flow/Gas_total
+            vi_ii = O_molar_flow / DEZn_molar_flow * MO_total / Gas_total
+            ii = DEZn_molar_flow / MO_total
+            vi = O_molar_flow / Gas_total
         else:
             vi_ii = np.nan
+            ii = np.nan
+            vi = np.nan
 
-        if TMAl_flow != 0 or TEGa_flow !=0:
-            vi_mo = O_molar_flow/(DEZn_molar_flow+TEGa_molar_flow+TMAl_molar_flow) * MO_total / Gas_total
-            iii = (TMAl_molar_flow+TEGa_molar_flow)/MO_total
+        if TMAl_flow != 0 or TEGa_flow != 0:
+            vi_mo = (
+                O_molar_flow
+                / (DEZn_molar_flow + TEGa_molar_flow + TMAl_molar_flow)
+                * MO_total
+                / Gas_total
+            )
+            iii = (TMAl_molar_flow + TEGa_molar_flow) / MO_total
+        else:
+            vi_mo = np.nan
+            iii = np.nan
 
+        sample.DEZn_molar = DEZn_molar_flow
+        sample.TEGa_molar = TEGa_molar_flow
+        sample.TMAl_molar = TMAl_molar_flow
+        sample.tBuOH_molar = O_molar_flow
+        sample.MO_total = MO_total
+        sample.vi_ii = vi_ii
+        sample.vi_mo = vi_mo
+        sample.ii = ii
+        sample.iii = iii
+        sample.vi = vi
+        sample.TMAl_flow = float(TMAl_flow)
+        sample.tBuOH_flow = float(tBuOH_flow)
+        sample.MO_carrier = float(MO_carrier)
+        sample.DEZn_flow = float(DEZn_flow)
+        sample.TEGa_flow = float(TEGa_flow)
+        sample.Gas_carrier = float(Gas_carrier)
 
-
-
-        sample.update({"DEZn molar": DEZn_molar_flow,
-                       "TEGa molar": TEGa_molar_flow,
-                       "TMAl molar": TMAl_molar_flow,
-                       "tBuOH molar": O_molar_flow,
-                       "MO total":MO_total,
-                       "vi_ii": vi_ii,
-                        "vi_mo":vi_mo,
-                       "ii":ii,
-                       "iii":iii,
-                       "vi":vi,
-                        'TMAl_flow': float(TMAl_flow),
-                       'tBuOH_flow': float(tBuOH_flow),
-                       "MO_carrier": float(MO_carrier),
-                       "DEZn_flow":float(DEZn_flow),
-                       "TEGa_flow":float(TEGa_flow),
-                       "MO_carrier": float(MO_carrier),
-                       "Gas_carrier": float(Gas_carrier)})
 
 def make_samples_data(start_run=688, end_run=722):
-    """
-    :param start_run: lower limit of run_no's included
-    :param end_run: upper limit of run_no's included
-    :return: list of dictionaries that can serve as samples_data
+    """Create a list of :class:`Sample` objects.
+
+    :param start_run: lower limit of run numbers included
+    :param end_run: upper limit of run numbers included
+    :return: list of :class:`Sample` instances
     """
     samples_data = []
 
     first_sample = start_run
     last_sample = end_run
-    samples_with_AM_substrates = [717,718]
+    samples_with_AM_substrates = [717, 718]
 
-    if len(samples_data) == 0:
-        samples_data = []
-        for sub in ["R", "C"]:
-            for x in range(first_sample, last_sample+1, 1):
-                samples_data.append({"run_no": str(x),
-                                     "sub": sub})
-        for sub in ["A", "M"]:
-            for x in samples_with_AM_substrates:
-                samples_data.append({"run_no": str(x),
-                                     "sub": sub})
+    for sub in ["R", "C"]:
+        for x in range(first_sample, last_sample + 1):
+            samples_data.append(Sample(run_no=str(x), sub=sub))
+    for sub in ["A", "M"]:
+        for x in samples_with_AM_substrates:
+            samples_data.append(Sample(run_no=str(x), sub=sub))
 
-    samples_data = sorted(samples_data, key=lambda k: k["run_no"])
+    samples_data.sort(key=lambda k: k.run_no)
 
     return samples_data

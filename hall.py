@@ -125,10 +125,10 @@ def getFolder(folder, thickness_file="AZO_hall_thicknesses_20170314.txt"):
 def to_list(samples_data, hall_data):
     for dataset in samples_data:
         for h_sample in hall_data:
-            if dataset["run_no"] == h_sample["run_no"] and dataset["sub"] == h_sample["sub"]:
-                dataset.update({"hall_n": h_sample["hall_n"],
-                                "hall_p": h_sample["hall_p"],
-                                "hall_mob": h_sample["hall_mob"],
-                                "hall_thick": h_sample["thickness"]})
+            if dataset.run_no == h_sample["run_no"] and dataset.sub == h_sample["sub"]:
+                dataset.hall_n = h_sample["hall_n"]
+                dataset.hall_p = h_sample["hall_p"]
+                dataset.hall_mob = h_sample["hall_mob"]
+                dataset.hall_thick = h_sample["thickness"]
 
-                print("ok", dataset["run_no"], dataset["sub"])
+                print("ok", dataset.run_no, dataset.sub)

@@ -715,7 +715,7 @@ def rock_to_list(samples_data,rock_list):
     """
     for r_dat in rock_list:
         for sam_dat in samples_data:
-            if r_dat["run_no"] == sam_dat["run_no"] and r_dat["sub"] == sam_dat["sub"]:
+            if r_dat["run_no"] == sam_dat.run_no and r_dat["sub"] == sam_dat.sub:
                     d_range = r_dat["range"]
                     if d_range[0] in ["12","13"]:
                         rkey = "rocking13"
@@ -724,8 +724,8 @@ def rock_to_list(samples_data,rock_list):
                         rkey = "rocking23"
                         other_key = "rocking13"
 
-                    sam_dat.update({rkey:r_dat["fwhm"],
-                                    other_key: np.nan})
+                    setattr(sam_dat, rkey, r_dat["fwhm"])
+                    setattr(sam_dat, other_key, np.nan)
                     continue
 
 def fit_xrd_folder(xrd_folder, XRD_data, noise = 1e-2):

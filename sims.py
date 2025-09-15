@@ -202,10 +202,9 @@ def getFolder(folder, figures=False):
 def to_list(samples_data, sims_data):
     for dataset in samples_data:
         for sim in sims_data:
-            if str(dataset["run_no"]) == str(sim["run_no"]) and str(dataset["sub"]) == str(sim["sub"]):
-                dataset.update(
-                    {"Al_content": sim["Al_content"],
-                     "Al_error": sim["Al_error"],
-                     "Zn_content": sim["Zn_content"],
-                     "Zn_error": sim["Zn_error"],
-                     "SIMS_T": sim["SIMS_T"]})
+            if str(dataset.run_no) == str(sim["run_no"]) and str(dataset.sub) == str(sim["sub"]):
+                dataset.Al_content = sim["Al_content"]
+                dataset.Al_error = sim["Al_error"]
+                dataset.Zn_content = sim["Zn_content"]
+                dataset.Zn_error = sim["Zn_error"]
+                dataset.SIMS_T = sim["SIMS_T"]
