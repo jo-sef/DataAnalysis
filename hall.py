@@ -1,10 +1,14 @@
 ####Definitions of hall extractions
 
 HALL_data = []
+import logging
 import os
 import re
 import pandas as pd
 from pathlib import Path
+
+
+logger = logging.getLogger(__name__)
 
 ###Get results from a single file
 def getFile(result_filename, folder="./", thickness_file="AZO_hall_thicknesses_20170314.txt"):
@@ -32,12 +36,19 @@ def getFile(result_filename, folder="./", thickness_file="AZO_hall_thicknesses_2
             if m:
                 l = pattern.findall(l)[0]
 
-                for i,col in enumerate(hall_col):
+                for i, col in enumerate(hall_col):
                     try:
                         hall_results[col].append(float(l[i]))
-
-                    except:
+                    except ValueError:
                         hall_results[col].append(l[i])
+                    except Exception as exc:
+                        logger.exception(
+                            "Unexpected error parsing column %s in %s: %s",
+                            col,
+                            result_filename,
+                            exc,
+                        )
+                        raise
 
         hall_results = pd.DataFrame(hall_results)
 
