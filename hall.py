@@ -6,6 +6,7 @@ import os
 import re
 import pandas as pd
 from pathlib import Path
+from utils.merge import merge_measurements
 
 
 logger = logging.getLogger(__name__)
@@ -123,12 +124,26 @@ def getFolder(folder, thickness_file="AZO_hall_thicknesses_20170314.txt"):
     return hall_data
 
 def to_list(samples_data, hall_data):
-    for dataset in samples_data:
-        for h_sample in hall_data:
-            if dataset["run_no"] == h_sample["run_no"] and dataset["sub"] == h_sample["sub"]:
-                dataset.update({"hall_n": h_sample["hall_n"],
-                                "hall_p": h_sample["hall_p"],
-                                "hall_mob": h_sample["hall_mob"],
-                                "hall_thick": h_sample["thickness"]})
+    """Merge hall measurements into the provided sample collection.
 
-                print("ok", dataset["run_no"], dataset["sub"])
+    Parameters
+    ----------
+    samples_data: list of dict
+        Sample dictionaries to be updated in-place.
+    hall_data: list of dict
+        Hall measurement dictionaries.
+
+    Returns
+    -------
+    list of dict
+        The updated ``samples_data`` collection.
+    """
+    prepared = []
+    for h_sample in hall_data:
+        if isinstance(h_sample, dict):
+            sample = dict(h_sample)
+            if "thickness" in sample:
+                sample["hall_thick"] = sample.pop("thickness")
+            prepared.append(sample)
+
+    return merge_measurements(samples_data, prepared)
