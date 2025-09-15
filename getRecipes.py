@@ -1,8 +1,6 @@
 import logging
 import re
-#runs_location = "M:\\PhD Main Folder\\09MOVPE\\"
-runs_location = "./"
-
+from .config import RUNS_LOCATION
 import zipfile
 import xml.etree.cElementTree
 import pandas as pd
@@ -29,12 +27,14 @@ def p_press(MO, bub_temp):
     press = 10.0**(gas_con.loc["B",MO]-gas_con.loc["A",MO]/(273.15+float(bub_temp)+gas_con.loc["C",MO]))
     return float(press)
 
-def runDoc(runs_location="./", start_row=670):
+def runDoc(runs_location=None, start_row=670):
     """
 
     :param runs_location:
     :return: raw dataframe of runs.docx
     """
+    if runs_location is None:
+        runs_location = RUNS_LOCATION
     runs_path = Path(runs_location)
 
     WORD_NAMESPACE = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
@@ -189,13 +189,15 @@ def get_temp(runs,precursor, sample):
         # print(sample + " no temp "+precursor)
         return 0
 
-def get_runs(run_location,start_row = 670):
+def get_runs(run_location=None, start_row=670):
     """Read runs.docx and return a pandas dataframe with the columns:
     'RUN', 'mat', 'DEZn flow', 'DEZn temp','tBuOH flow', 'tBuOH temp', "TMAl flow",
     "TMAl temp", "TEGa flow", "TEGa temp",'MO_carrier', "Gas_carrier"
 
     run_location contains path and name of folder containing runs.docx
     """
+    if run_location is None:
+        run_location = RUNS_LOCATION
     run_df = runDoc(run_location, start_row)
 
     new_runs = {"TEGa flow": [get_flow(run_df,"TEGa", samples.strip()) for samples in run_df.loc[:, "RUN"]],
