@@ -6,7 +6,7 @@ import os
 import re
 from scipy.interpolate import interp1d
 from lmfit.models import VoigtModel, LorentzianModel
-from utils.merge import merge_measurements
+from .utils.merge import merge_measurements
 
 from .config import REPORT_FOLDER, SAMPLE_LIST, ALPHA1
 

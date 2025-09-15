@@ -8,7 +8,7 @@ import os
 import re
 import matplotlib.pyplot as plt
 from pathlib import Path
-from utils.merge import merge_measurements
+from .utils.merge import merge_measurements
 
 
 def getFile(filename):

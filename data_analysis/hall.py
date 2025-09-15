@@ -6,7 +6,7 @@ import os
 import re
 import pandas as pd
 from pathlib import Path
-from utils.merge import merge_measurements
+from .utils.merge import merge_measurements
 
 
 logger = logging.getLogger(__name__)

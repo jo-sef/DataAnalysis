@@ -5,7 +5,7 @@ import pycap as pc
 import os
 import matplotlib.pyplot as plt
 from lmfit.models import LinearModel
-from utils.merge import merge_measurements
+from .utils.merge import merge_measurements
 
 """Load data from files in a folder into a list of dictionaries with data extracted from filename"""
 def correcting_for_hump(in_panda):
