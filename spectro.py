@@ -5,6 +5,7 @@ import pycap as pc
 import os
 import matplotlib.pyplot as plt
 from lmfit.models import LinearModel
+from utils.merge import merge_measurements
 
 """Load data from files in a folder into a list of dictionaries with data extracted from filename"""
 def correcting_for_hump(in_panda):
@@ -340,8 +341,5 @@ def taucfolder(t_folder):
     return uv_data
 
 def to_list(samples_data, uv_data):
-    for dataset in samples_data:
-        for u_sample in uv_data:
-            if dataset["run_no"] == u_sample["run_no"] and dataset["sub"] == u_sample["sub"]:
-                dataset.update(
-                    {"t_bandgap": u_sample["t_bandgap"]})
+    """Merge spectroscopic measurements into the provided sample collection."""
+    return merge_measurements(samples_data, uv_data)

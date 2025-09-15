@@ -6,6 +6,7 @@ import os
 import re
 from scipy.interpolate import interp1d
 from lmfit.models import VoigtModel, LorentzianModel
+from utils.merge import merge_measurements
 
 alpha1 = 1.54056
 alpha2 = 1.54439
@@ -706,27 +707,42 @@ def rockFolder(folder, par_or_report="report"):
 
     return sample_dicts
 
-def rock_to_list(samples_data,rock_list):
-    """
+def rock_to_list(samples_data, rock_list):
+    """Merge rocking curve information into the provided sample collection.
 
-    :param samples_data:
-    :param rock_list: = rockFolder()
-    :return: returns nothing, but adds fwhm of rocking curve to samples_data
+    Parameters
+    ----------
+    samples_data: list of dict
+        Sample dictionaries to update.
+    rock_list: list of dict
+        Output from :func:`rockFolder` containing rocking curve measurements.
+
+    Returns
+    -------
+    list of dict
+        The updated ``samples_data`` collection.
     """
+    prepared = []
     for r_dat in rock_list:
-        for sam_dat in samples_data:
-            if r_dat["run_no"] == sam_dat["run_no"] and r_dat["sub"] == sam_dat["sub"]:
-                    d_range = r_dat["range"]
-                    if d_range[0] in ["12","13"]:
-                        rkey = "rocking13"
-                        other_key = "rocking23"
-                    if d_range[0] in ["23"]:
-                        rkey = "rocking23"
-                        other_key = "rocking13"
+        if not isinstance(r_dat, dict):
+            continue
+        if "run_no" not in r_dat or "sub" not in r_dat or "range" not in r_dat:
+            continue
+        d_range = r_dat["range"]
+        if d_range[0] in ["12", "13"]:
+            rkey, other_key = "rocking13", "rocking23"
+        elif d_range[0] in ["23"]:
+            rkey, other_key = "rocking23", "rocking13"
+        else:
+            continue
+        prepared.append({
+            "run_no": r_dat["run_no"],
+            "sub": r_dat["sub"],
+            rkey: r_dat.get("fwhm"),
+            other_key: np.nan,
+        })
 
-                    sam_dat.update({rkey:r_dat["fwhm"],
-                                    other_key: np.nan})
-                    continue
+    return merge_measurements(samples_data, prepared)
 
 def fit_xrd_folder(xrd_folder, XRD_data, noise = 1e-2):
     """
