@@ -8,14 +8,10 @@ from scipy.interpolate import interp1d
 from lmfit.models import VoigtModel, LorentzianModel
 from utils.merge import merge_measurements
 
-alpha1 = 1.54056
-alpha2 = 1.54439
+from .config import REPORT_FOLDER, SAMPLE_LIST, ALPHA1
 
 ####################### variables #################################
-
-report_folder = r'./'
-
-sample_list = ["709"]
+sample_list = SAMPLE_LIST
 
 ##################### XRD FUNCTIONS #########################
 """dataset is an element in the list of dictionaries returned by collectXRDfolder"""
@@ -276,10 +272,10 @@ class xrdSample:
 
             return 1 / math.sqrt(c2_inv)
         def calc_d(two_theta):
-            return alpha1 / (2 * math.sin(two_theta * math.pi / 360))
+            return ALPHA1 / (2 * math.sin(two_theta * math.pi / 360))
         def d_error(t_theta,t_theta_error):
             """Returns the error in d. Units should be Angstrøm """
-            wl = alpha1
+            wl = ALPHA1
             machine_error = 0.008 ## or from variation of Al2O3 peaks.
             t_error = max(machine_error,t_theta_error) ### Select the biggest error etimate from machine or fit.
 
@@ -295,7 +291,7 @@ class xrdSample:
         def scherrer(fwhm,peak_position):
 
                 k = 0.9
-                wl = alpha1
+                wl = ALPHA1
                 B = fwhm/180*math.pi #must be units radian
                 p = peak_position/360 * math.pi #half of 2-theta
                 D = k * wl /(B* math.cos(p))
@@ -351,16 +347,16 @@ class xrdSample:
         c = self.c
         self.b = c*u
 
-    def fit_sample(self,report_folder="",model = "Voigt",keep_out = False,gammasigma = True):
-        """ Fits all peaks, plots the results, and calculates lattice parameters along with u and b. """
+    def fit_sample(self, report_folder=None, model="Voigt", keep_out=False, gammasigma=True):
+        """Fits all peaks, plots the results, and calculates lattice parameters along with u and b."""
         run_no = self.run_no
-        sub  = self.sub
-        f, ax = plt.subplots(2,2)
-        f_sap,ax_sap = plt.subplots(1,1)
+        sub = self.sub
+        f, ax = plt.subplots(2, 2)
+        f_sap, ax_sap = plt.subplots(1, 1)
         f.suptitle(str(self.run_no) + self.sub)
         f_sap.suptitle(str(self.run_no) + self.sub + r"$Al_2O_3$")
         ax_l = {"100": ax[0][0], "002": ax[0][1], "101": ax[1][0], "110": ax[1][1]}
-        fits =dict()
+        fits = dict()
 
         for hkl in self.exp_ang:
             if self.sub not in ("R","C"):
@@ -402,23 +398,26 @@ class xrdSample:
 
             ax.set_ylim(0, max_y * 1.1)
 
+        if report_folder is None:
+            report_folder = REPORT_FOLDER
         if report_folder == "":
             f.show()
-            f2.show()
+            f_sap.show()
         else:
-            f.savefig(report_folder+"/XRD_fit_%s%s.png" % (self.run_no, self.sub), dpi=300)
-            f_sap.savefig(report_folder+"/XRD_fit_%s%s_sapphire.png" % (self.run_no, self.sub), dpi=300)
-            with open(report_folder+"/fit_report_%s%s.txt" %(self.run_no, self.sub),"w" ) as fh:
+            os.makedirs(report_folder, exist_ok=True)
+            f.savefig(report_folder + "/XRD_fit_%s%s.png" % (self.run_no, self.sub), dpi=300)
+            f_sap.savefig(report_folder + "/XRD_fit_%s%s_sapphire.png" % (self.run_no, self.sub), dpi=300)
+            with open(report_folder + "/fit_report_%s%s.txt" % (self.run_no, self.sub), "w") as fh:
                 for rep_hkl in fits:
                     print(rep_hkl)
-                    fh.write("Fit of {} peak:{}\n\n".format(self.run_no,rep_hkl))
+                    fh.write("Fit of {} peak:{}\n\n".format(self.run_no, rep_hkl))
                     fh.write(fits[rep_hkl])
                     fh.write("\n")
 
         plt.close(f)
         plt.close(f_sap)
-        if self.no_peaks == False:
-            self.peak = read_fit(report_folder+"/fit_report_%s%s.txt" %(self.run_no, self.sub))
+        if self.no_peaks == False and report_folder != "":
+            self.peak = read_fit(report_folder + "/fit_report_%s%s.txt" % (self.run_no, self.sub))
             self.peak_params()
             self.calc_u()
             self.calc_b()
